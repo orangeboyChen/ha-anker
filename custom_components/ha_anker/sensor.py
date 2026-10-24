@@ -2,7 +2,7 @@
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE
+from homeassistant.const import PERCENTAGE, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -27,6 +27,10 @@ async def async_setup_entry(
             CloudAggregateSensor(entry.runtime_data, device, metric)
             for device in entry.runtime_data.devices
             for metric in ("total_current", "total_power", "nonzero_status_count")
+        )
+        entities.extend(
+            CloudRawTelemetrySensor(entry.runtime_data, device)
+            for device in entry.runtime_data.devices
         )
         async_add_entities(entities)
         return
@@ -150,3 +154,41 @@ class CloudAggregateSensor(CoordinatorEntity[AnkerCloudCoordinator], SensorEntit
     def extra_state_attributes(self) -> dict:
         telemetry = (self.coordinator.data or {}).get(self.device_id, {})
         return {"raw_fields": telemetry.get("raw_fields", {})}
+
+
+class CloudRawTelemetrySensor(CoordinatorEntity[AnkerCloudCoordinator], SensorEntity):
+    """Keep every A2345 response field visible without assigning meanings."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator, device: dict) -> None:
+        super().__init__(coordinator)
+        self.device_id = str(device["device_id"])
+        self._attr_unique_id = f"{self.device_id}_raw_telemetry"
+        self._attr_name = "Raw telemetry"
+        self._attr_icon = "mdi:code-json"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, self.device_id)},
+            "name": device.get("name") or device.get("device_sn") or "Anker Charger",
+            "manufacturer": "Anker",
+            "model": device.get("device_pn") or "A2345",
+        }
+
+    @property
+    def native_value(self):
+        telemetry = (self.coordinator.data or {}).get(self.device_id, {})
+        command = telemetry.get("command")
+        return f"0x{command:04x}" if isinstance(command, int) else None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        telemetry = (self.coordinator.data or {}).get(self.device_id, {})
+        return {
+            "raw_fields": telemetry.get("raw_fields", {}),
+            "decoded_fields": {
+                key: value
+                for key, value in telemetry.items()
+                if key not in {"command", "raw_fields"}
+            },
+        }
