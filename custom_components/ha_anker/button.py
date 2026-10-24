@@ -7,6 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .cloud_coordinator import AnkerCloudCoordinator
 from .const import DOMAIN
 from .coordinator import AnkerCoordinator
 
@@ -15,6 +16,8 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback
 ) -> None:
     """Set up explicit connect/disconnect buttons."""
+    if isinstance(entry.runtime_data, AnkerCloudCoordinator):
+        return
     async_add_entities(
         [AnkerConnectButton(entry.runtime_data), AnkerDisconnectButton(entry.runtime_data)]
     )

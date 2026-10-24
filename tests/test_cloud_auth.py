@@ -51,6 +51,23 @@ async def test_login_persists_session_without_password(hass) -> None:
 
 
 @pytest.mark.asyncio
+async def test_password_cache_is_shared_with_coordinator_manager(hass) -> None:
+    first = CloudAuthManager(hass, transport=FakeTransport())
+    account = await first.async_login("user@example.test", "not-persisted")
+    account = CloudAccount(
+        account.account_id,
+        account.email,
+        account.auth_token,
+        datetime.now(UTC) - timedelta(seconds=1),
+    )
+    second = CloudAuthManager(hass, transport=FakeTransport())
+
+    refreshed = await second.async_ensure_valid(account)
+
+    assert refreshed.auth_token == "token-1"
+
+
+@pytest.mark.asyncio
 async def test_one_account_can_list_multiple_devices(hass) -> None:
     manager = CloudAuthManager(hass, transport=FakeTransport())
     account = await manager.async_login("user@example.test", "not-persisted")

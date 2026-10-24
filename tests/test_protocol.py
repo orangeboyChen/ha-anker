@@ -5,8 +5,13 @@ from cryptography.exceptions import InvalidTag
 
 from custom_components.ha_anker.mqtt_protocol import (
     command_topic,
+    decode_a2345_telemetry,
     decode_envelope,
+    decode_mqtt_zx_frame,
+    encode_a2345_status_request,
     encode_envelope,
+    encode_mqtt_zx_frame,
+    encode_status_envelope,
     response_topic,
 )
 from custom_components.ha_anker.protocol import (
@@ -106,3 +111,54 @@ def test_mqtt_envelope_and_topics_are_offline_and_deterministic() -> None:
         encode_envelope(device_pn="A1903", device_sn="WIFI-TEST", account_id="a", client_id="c")
     with pytest.raises(ValueError, match="base64"):
         decode_envelope('{"head": {}, "payload": {"data": "bad!"}}')
+
+
+def test_a2345_status_request_has_verified_read_only_body() -> None:
+    frame = encode_a2345_status_request(timestamp=0x01020304)
+
+    group, command, body = decode_mqtt_zx_frame(frame)
+
+    assert (group, command) == (0x0F, 0x0200)
+    assert body == bytes.fromhex("a10122fe050304030201")
+
+    zero_timestamp = decode_mqtt_zx_frame(encode_a2345_status_request(timestamp=0))[2]
+    assert zero_timestamp == bytes.fromhex("a10122fe050300000000")
+
+
+def test_a2345_telemetry_decodes_port_measurements() -> None:
+    def port(status: int, voltage_mv: int, current_ma: int, power_tenth_w: int) -> bytes:
+        return (
+            bytes((status,))
+            + voltage_mv.to_bytes(2, "little")
+            + current_ma.to_bytes(2, "little")
+            + power_tenth_w.to_bytes(2, "little")
+        )
+
+    body = b"\x00"
+    body += b"\xa2\x08\x00\x01" + port(1, 4984, 20, 10)
+    body += b"\xa3\x08\x00\x01" + port(1, 19816, 549, 990)
+    frame = encode_mqtt_zx_frame(group=0x0F, command=0x0303, body=body)
+
+    decoded = decode_a2345_telemetry(frame)
+
+    assert decoded["usbc_1_voltage"] == 4.984
+    assert decoded["usbc_1_current"] == 0.02
+    assert decoded["usbc_1_power"] == 0.1
+    assert decoded["usbc_2_voltage"] == 19.816
+    assert decoded["usbc_2_current"] == 0.549
+    assert decoded["usbc_2_power"] == 9.9
+
+
+def test_status_envelope_embeds_the_same_timestamp_and_frame() -> None:
+    encoded = encode_status_envelope(
+        device_pn="A2345",
+        device_sn="WIFI-TEST",
+        account_id="account-1",
+        client_id="client-1",
+        timestamp=123,
+    )
+
+    decoded = decode_envelope(encoded)
+    assert decoded["head"]["cmd"] == 17
+    assert decoded["head"]["timestamp"] == 123
+    assert decode_mqtt_zx_frame(decoded["data"])[1] == 0x0200

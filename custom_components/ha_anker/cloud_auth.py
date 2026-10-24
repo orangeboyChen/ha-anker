@@ -17,6 +17,8 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
+from .const import DOMAIN
+
 STORE_KEY = "ha_anker.cloud_accounts"
 STORE_VERSION = 1
 REFRESH_SKEW = timedelta(minutes=2)
@@ -26,7 +28,7 @@ API_PUBLIC_KEY = bytes.fromhex(
     "868d9750cb47fa4619248f3d83f0f662671dadc6e2d31c2f41db0161651c7c076"
 )
 DEVICE_LIST_PATH = "power_service/v1/app/get_relate_and_bind_devices"
-MQTT_INFO_PATH = "app/devicemanage/get_user_mqtt_info"
+MQTT_INFO_PATH = "v1/openapi/devicemanage/get_user_mqtt_info"
 SUPPORTED_PRODUCTS = {"A110A", "A2345"}
 _LOGGER = logging.getLogger(__name__)
 
@@ -204,9 +206,7 @@ class AnkerCloudTransport:
         public_key = private_key.public_key().public_bytes(
             Encoding.X962, PublicFormat.UncompressedPoint
         )
-        remote_key = ec.EllipticCurvePublicKey.from_encoded_point(
-            ec.SECP256R1(), API_PUBLIC_KEY
-        )
+        remote_key = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), API_PUBLIC_KEY)
         shared_key = private_key.exchange(ec.ECDH(), remote_key)
         padder = padding.PKCS7(128).padder()
         padded = padder.update(password.encode()) + padder.finalize()
@@ -276,9 +276,7 @@ class AnkerCloudTransport:
                     online=bool(item.get("wifi_online")) if not ble_only else None,
                     transport="ble" if ble_only else "cloud",
                     address=(
-                        str(item.get("bt_ble_mac"))
-                        if ble_only and item.get("bt_ble_mac")
-                        else None
+                        str(item.get("bt_ble_mac")) if ble_only and item.get("bt_ble_mac") else None
                     ),
                 )
             )
@@ -344,7 +342,10 @@ class CloudAuthManager:
     ) -> None:
         self.store = store or CloudAccountStore(hass)
         self.transport = transport or AnkerCloudTransport()
-        self._passwords: dict[str, str] = {}
+        # Passwords are shared only in process so a coordinator created after
+        # config flow completion can refresh the same account without writing
+        # credentials to HA storage.  The cache disappears on restart.
+        self._passwords = hass.data.setdefault(DOMAIN, {}).setdefault("cloud_passwords", {})
 
     def set_password(self, account_id: str, password: str) -> None:
         """Keep the submitted credential in process memory for token renewal."""
@@ -377,13 +378,18 @@ class CloudAuthManager:
         await self.store.async_upsert(refreshed)
         return refreshed
 
+    async def async_invalidate(self, account_id: str) -> None:
+        """Remove a session and its in-memory password after auth rejection."""
+        self._passwords.pop(account_id, None)
+        await self.store.async_remove(account_id)
+
     async def async_list_devices(self, account: CloudAccount) -> Sequence[CloudDevice]:
         """Return the account's devices after refreshing when needed."""
         valid = await self.async_ensure_valid(account)
         try:
             return await self.transport.async_list_devices(valid)
         except CloudAuthenticationError:
-            await self.store.async_remove(valid.account_id)
+            await self.async_invalidate(valid.account_id)
             raise
 
     async def async_refresh_expiring_accounts(self) -> list[CloudAccount]:

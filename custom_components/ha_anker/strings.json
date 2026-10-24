@@ -18,7 +18,7 @@
       "cloud_device": {
         "title": "Choose an Anker device",
         "description": "The account can have multiple devices.",
-        "data": {"device_id": "Device"}
+        "data": {"selected_devices": "Devices"}
       }
     },
     "error": {
@@ -29,7 +29,8 @@
       "invalid_auth": "Anker rejected the email or password.",
       "cloud_unavailable": "Anker's encrypted cloud transport is not available yet.",
       "device_not_found": "The selected device is no longer available.",
-      "no_devices": "No devices are available for this account."
+      "no_devices": "No devices are available for this account.",
+      "no_devices_selected": "Select at least one device."
     },
     "abort": {
       "already_configured": "This device is already configured.",

@@ -123,6 +123,7 @@ class AnkerConfigFlow(ConfigFlow, domain=DOMAIN):
                     return await self.async_step_cloud_device()
                 except CloudAuthenticationError:
                     errors["base"] = "auth_expired"
+                    accounts = await self.cloud_manager.store.async_load()
                 except CloudProtocolUnavailableError:
                     errors["base"] = "cloud_unavailable"
         if not accounts:
@@ -188,7 +189,11 @@ class AnkerConfigFlow(ConfigFlow, domain=DOMAIN):
             for device_id in [item.get("device_id")]
             if isinstance(device_id, str)
         }
-        available = [device for device in self._cloud_devices if device.device_id not in configured]
+        available = [
+            device
+            for device in self._cloud_devices
+            if device.transport == TRANSPORT_CLOUD and device.device_id not in configured
+        ]
         if user_input is not None:
             selected_ids = user_input.get(CONF_SELECTED_DEVICES, [])
             if isinstance(selected_ids, str):

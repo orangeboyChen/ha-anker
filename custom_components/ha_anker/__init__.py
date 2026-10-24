@@ -8,9 +8,15 @@ from .const import PLATFORMS
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up the configured power bank."""
-    from .coordinator import AnkerCoordinator
+    if entry.data.get("transport") == "cloud":
+        from .cloud_coordinator import AnkerCloudCoordinator
 
-    coordinator = AnkerCoordinator(hass, entry)
+        coordinator = AnkerCloudCoordinator(hass, entry)
+    else:
+        from .coordinator import AnkerCoordinator
+
+        coordinator = AnkerCoordinator(hass, entry)
+
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # Entity creation must not depend on the power bank being nearby.  The

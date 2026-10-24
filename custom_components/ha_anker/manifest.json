@@ -9,6 +9,6 @@
   "integration_type": "device",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/orangeboyChen/ha-anker/issues",
-  "requirements": ["bleak-retry-connector>=4.7.1"],
+  "requirements": ["bleak-retry-connector>=4.7.1", "paho-mqtt==2.1.0"],
   "version": "0.1.0"
 }
