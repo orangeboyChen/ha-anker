@@ -206,12 +206,31 @@ def decode_a2345_telemetry(value: bytes) -> dict[str, object]:
         "raw_fields": {f"0x{key:02x}": raw.hex() for key, raw in fields.items()},
     }
     ports = ("usbc_1", "usbc_2", "usbc_3", "usbc_4", "usba_1", "usba_2")
+    parsed_ports = 0
+    total_current = 0.0
+    total_power = 0.0
     for field_id, port in zip(range(0xA2, 0xA8), ports, strict=False):
         raw = fields.get(field_id)
         if raw is None or len(raw) < 7:
             continue
+        parsed_ports += 1
+        voltage = int.from_bytes(raw[1:3], "little") / 1000
+        current = int.from_bytes(raw[3:5], "little") / 1000
+        power = int.from_bytes(raw[5:7], "little") / 100
         result[f"{port}_status"] = raw[0]
-        result[f"{port}_voltage"] = int.from_bytes(raw[1:3], "little") / 1000
-        result[f"{port}_current"] = int.from_bytes(raw[3:5], "little") / 1000
-        result[f"{port}_power"] = int.from_bytes(raw[5:7], "little") / 100
+        result[f"{port}_voltage"] = voltage
+        result[f"{port}_current"] = current
+        result[f"{port}_power"] = power
+        total_current += current
+        total_power += power
+    if parsed_ports:
+        # These are sums of the independently decoded port measurements.  Do
+        # not expose a value when no complete port group was received.
+        result["total_current"] = round(total_current, 3)
+        result["total_power"] = round(total_power, 2)
+        result["nonzero_status_count"] = sum(
+            1
+            for port in ports
+            if isinstance(result.get(f"{port}_status"), int) and result[f"{port}_status"] != 0
+        )
     return result

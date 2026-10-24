@@ -147,6 +147,10 @@ def test_a2345_telemetry_decodes_port_measurements() -> None:
     assert decoded["usbc_2_voltage"] == 19.816
     assert decoded["usbc_2_current"] == 0.549
     assert decoded["usbc_2_power"] == 9.9
+    assert decoded["usbc_1_status"] == 1
+    assert decoded["total_current"] == 0.569
+    assert decoded["total_power"] == 10.0
+    assert decoded["nonzero_status_count"] == 2
 
 
 def test_status_envelope_embeds_the_same_timestamp_and_frame() -> None:

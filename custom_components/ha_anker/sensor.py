@@ -21,8 +21,13 @@ async def async_setup_entry(
             CloudPortSensor(entry.runtime_data, device, port, metric)
             for device in entry.runtime_data.devices
             for port in ("usbc_1", "usbc_2", "usbc_3", "usbc_4", "usba_1", "usba_2")
-            for metric in ("voltage", "current", "power")
+            for metric in ("status", "voltage", "current", "power")
         ]
+        entities.extend(
+            CloudAggregateSensor(entry.runtime_data, device, metric)
+            for device in entry.runtime_data.devices
+            for metric in ("total_current", "total_power", "nonzero_status_count")
+        )
         async_add_entities(entities)
         return
     async_add_entities([AnkerBatterySensor(entry.runtime_data)])
@@ -72,10 +77,19 @@ class CloudPortSensor(CoordinatorEntity[AnkerCloudCoordinator], SensorEntity):
         self._attr_unique_id = f"{self.device_id}_{port}_{metric}"
         self._attr_name = f"{port.replace('_', ' ').title()} {metric}"
         self._attr_native_unit_of_measurement = {
+            "status": None,
             "voltage": "V",
             "current": "A",
             "power": "W",
         }[metric]
+        self._attr_device_class = {
+            "status": None,
+            "voltage": SensorDeviceClass.VOLTAGE,
+            "current": SensorDeviceClass.CURRENT,
+            "power": SensorDeviceClass.POWER,
+        }[metric]
+        if metric == "status":
+            self._attr_state_class = None
         self._attr_device_info = {
             "identifiers": {(DOMAIN, self.device_id)},
             "name": device.get("name") or device.get("device_sn") or "Anker Charger",
@@ -87,6 +101,50 @@ class CloudPortSensor(CoordinatorEntity[AnkerCloudCoordinator], SensorEntity):
     def native_value(self):
         telemetry = (self.coordinator.data or {}).get(self.device_id, {})
         return telemetry.get(f"{self.port}_{self.metric}")
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        telemetry = (self.coordinator.data or {}).get(self.device_id, {})
+        return {"raw_fields": telemetry.get("raw_fields", {})}
+
+
+class CloudAggregateSensor(CoordinatorEntity[AnkerCloudCoordinator], SensorEntity):
+    """Expose sums/counts derived only from complete port measurements."""
+
+    _attr_has_entity_name = True
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, device: dict, metric: str) -> None:
+        super().__init__(coordinator)
+        self.device_id = str(device["device_id"])
+        self.metric = metric
+        self._attr_unique_id = f"{self.device_id}_{metric}"
+        self._attr_name = {
+            "total_current": "Total current",
+            "total_power": "Total power",
+            "nonzero_status_count": "Non-zero port status count",
+        }[metric]
+        self._attr_native_unit_of_measurement = {
+            "total_current": "A",
+            "total_power": "W",
+            "nonzero_status_count": None,
+        }[metric]
+        self._attr_device_class = {
+            "total_current": SensorDeviceClass.CURRENT,
+            "total_power": SensorDeviceClass.POWER,
+            "nonzero_status_count": None,
+        }[metric]
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, self.device_id)},
+            "name": device.get("name") or device.get("device_sn") or "Anker Charger",
+            "manufacturer": "Anker",
+            "model": device.get("device_pn") or "A2345",
+        }
+
+    @property
+    def native_value(self):
+        telemetry = (self.coordinator.data or {}).get(self.device_id, {})
+        return telemetry.get(self.metric)
 
     @property
     def extra_state_attributes(self) -> dict:

@@ -16,7 +16,7 @@ The BLE path uses the local HA Bluetooth stack. The A2345 cloud path asks for an
 - A110A BLE: GATT discovery, authenticated FF09 GCM session, battery snapshot and live notification updates.
 - Manual connection controls: Connect resumes updates; Disconnect closes GATT and pauses automatic reconnection.
 - `raw_fields` preserves received telemetry TLVs without guessing their meaning or scale.
-- A2345 cloud MQTT: mTLS credentials are obtained after account login, a read-only status request is published, and six USB port telemetry groups are exposed. The MQTT session and temporary certificate material remain in memory only.
+- A2345 cloud MQTT: mTLS credentials are obtained after account login, a read-only status request is published, and six USB port telemetry groups are exposed. Each port has raw status plus voltage, current, and power; total current, total power, and a non-zero status count are also derived from complete port groups. The MQTT session and temporary certificate material remain in memory only.
 - Cloud account persistence and multi-device selection are implemented in `cloud_auth.py` and `config_flow.py`. Passwords are never stored; a password entered during the current HA process is reused for token renewal. If the session becomes invalid, the cached account is removed and must be added again.
 - Only the observed A2345 status request and telemetry response are implemented. Charging-mode, port-switch, timer, and other write commands are intentionally not exposed until their payloads are independently verified.
 
