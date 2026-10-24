@@ -23,15 +23,25 @@ from custom_components.ha_anker.protocol import (
 
 
 def test_a110a_device_info_frame_decodes() -> None:
-    frame = bytes.fromhex(
-        "ff094800030001082900a10103a2084368617267696e67a30876302e302e352e32"
-        "a411414659444b513543473134313031373634a511007f1d0beff235434731343130313736342a"
+    frame = encode_frame(
+        1,
+        0x0029,
+        encode_tlvs(
+            [
+                (0xA1, b"\x03"),
+                (0xA2, b"Charging"),
+                (0xA3, b"v0.0.5.2"),
+                (0xA4, b"BLE-TEST-SN"),
+                (0xA5, bytes.fromhex("007f1d0beff235")),
+            ]
+        ),
+        encrypted=False,
     )
     decoded = decode_frame(frame)
     assert decoded.command == 0x0029
     assert not decoded.encrypted
     fields = decode_tlvs(decoded.body)
-    assert fields[0xA4] == b"AFYDKQ5CG14101764"
+    assert fields[0xA4] == b"BLE-TEST-SN"
 
 
 def test_frame_encoder_matches_known_public_read_request() -> None:

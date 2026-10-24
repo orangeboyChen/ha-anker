@@ -2,10 +2,39 @@
   "config": {
     "step": {
       "confirm": {"title": "Anker Power Bank", "description": "Add this nearby Anker BLE device?"},
-      "user": {"title": "Anker Power Bank", "data": {"address": "Bluetooth address", "name": "Name"}}
+      "user": {
+        "title": "Anker device",
+        "data": {"transport": "Connection", "address": "Bluetooth address", "name": "Name"}
+      },
+      "cloud_account": {
+        "title": "Anker account",
+        "description": "Choose a cached account or add another one.",
+        "data": {"account_id": "Account"}
+      },
+      "cloud_login": {
+        "title": "Sign in to Anker",
+        "data": {"email": "Email", "password": "Password"}
+      },
+      "cloud_device": {
+        "title": "Choose an Anker device",
+        "description": "The account can have multiple devices.",
+        "data": {"device_id": "Device"}
+      }
     },
-    "error": {"not_found": "Device is not currently discovered by Home Assistant Bluetooth."},
-    "abort": {"already_configured": "This Bluetooth device is already configured.", "no_device": "No device discovery information was available."}
+    "error": {
+      "address_required": "Enter a Bluetooth address.",
+      "not_found": "Device is not currently discovered by Home Assistant Bluetooth.",
+      "account_not_found": "The cached account is no longer available.",
+      "auth_expired": "The Anker session expired. Sign in again.",
+      "invalid_auth": "Anker rejected the email or password.",
+      "cloud_unavailable": "Anker's encrypted cloud transport is not available yet.",
+      "device_not_found": "The selected device is no longer available.",
+      "no_devices": "No devices are available for this account."
+    },
+    "abort": {
+      "already_configured": "This device is already configured.",
+      "no_device": "No device discovery information was available."
+    }
   },
   "entity": {
     "sensor": {"battery": {"name": "Battery"}},

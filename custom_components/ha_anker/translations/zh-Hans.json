@@ -2,10 +2,36 @@
   "config": {
     "step": {
       "confirm": {"title": "Anker 充电宝", "description": "添加附近发现的 Anker 蓝牙设备？"},
-      "user": {"title": "Anker 充电宝", "data": {"address": "蓝牙地址", "name": "名称"}}
+      "user": {
+        "title": "Anker 设备",
+        "data": {"transport": "连接方式", "address": "蓝牙地址", "name": "名称"}
+      },
+      "cloud_account": {
+        "title": "Anker 账号",
+        "description": "选择已缓存的账号，或新增账号。",
+        "data": {"account_id": "账号"}
+      },
+      "cloud_login": {
+        "title": "登录 Anker",
+        "data": {"email": "邮箱", "password": "密码"}
+      },
+      "cloud_device": {
+        "title": "选择 Anker 设备",
+        "description": "一个账号可以有多台设备。",
+        "data": {"device_id": "设备"}
+      }
     },
-    "error": {"not_found": "Home Assistant 蓝牙当前未发现此设备。"},
-    "abort": {"already_configured": "此蓝牙设备已配置。", "no_device": "没有可用的设备发现信息。"}
+    "error": {
+      "address_required": "请输入蓝牙地址。",
+      "not_found": "Home Assistant 蓝牙当前未发现此设备。",
+      "account_not_found": "缓存的账号已不存在。",
+      "auth_expired": "Anker 会话已过期，请重新登录。",
+      "invalid_auth": "Anker 拒绝了邮箱或密码。",
+      "cloud_unavailable": "Anker 加密云端传输尚未可用。",
+      "device_not_found": "所选设备已不可用。",
+      "no_devices": "此账号没有可用设备。"
+    },
+    "abort": {"already_configured": "此设备已配置。", "no_device": "没有可用的设备发现信息。"}
   },
   "entity": {
     "sensor": {"battery": {"name": "电量"}},
