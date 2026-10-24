@@ -352,6 +352,12 @@ class CloudAuthManager:
         if password:
             self._passwords[account_id] = password
 
+    async def async_close(self) -> None:
+        """Close an owned HTTP transport session."""
+        close = getattr(self.transport, "async_close", None)
+        if close is not None:
+            await close()
+
     async def async_login(self, email: str, password: str) -> CloudAccount:
         """Log in without retaining the submitted password."""
         if not email.strip() or not password:

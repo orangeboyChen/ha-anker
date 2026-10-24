@@ -174,6 +174,8 @@ class AnkerConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self.async_step_cloud_account()
             except CloudProtocolUnavailableError:
                 errors["base"] = "cloud_unavailable"
+            finally:
+                await self.cloud_manager.async_close()
             if not self._cloud_devices:
                 if user_input is not None:
                     errors["base"] = errors.get("base", "no_devices")
