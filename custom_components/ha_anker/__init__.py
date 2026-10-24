@@ -11,9 +11,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     from .coordinator import AnkerCoordinator
 
     coordinator = AnkerCoordinator(hass, entry)
-    await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # Entity creation must not depend on the power bank being nearby.  The
+    # first BLE connection is deliberately a background refresh so an offline
+    # device can still be added and its connection controls remain available.
+    coordinator.async_start()
     return True
 
 

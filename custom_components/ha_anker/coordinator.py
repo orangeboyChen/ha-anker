@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from contextlib import suppress
 
 from bleak import BleakClient
 from bleak_retry_connector import establish_connection
@@ -63,6 +64,14 @@ class AnkerCoordinator(DataUpdateCoordinator[Telemetry]):
         self._session_nonce: bytes | None = None
         self._manually_disconnected = False
         self._connect_lock = asyncio.Lock()
+        self._initial_refresh_task: asyncio.Task[None] | None = None
+
+    def async_start(self) -> None:
+        """Start the initial refresh without blocking config-entry setup."""
+        if self._initial_refresh_task is None:
+            self._initial_refresh_task = self.hass.async_create_task(
+                self.async_refresh(), name=f"{DOMAIN}_{self.address}_initial_refresh"
+            )
 
     @property
     def connected(self) -> bool:
@@ -231,5 +240,9 @@ class AnkerCoordinator(DataUpdateCoordinator[Telemetry]):
 
     async def async_shutdown(self) -> None:
         """Close the connection on config-entry unload."""
+        if self._initial_refresh_task is not None and not self._initial_refresh_task.done():
+            self._initial_refresh_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._initial_refresh_task
         await super().async_shutdown()
         await self._drop_connection()

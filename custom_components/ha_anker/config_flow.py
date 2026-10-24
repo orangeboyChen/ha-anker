@@ -6,6 +6,7 @@ import voluptuous as vol
 from home_assistant_bluetooth import BluetoothServiceInfoBleak
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_ADDRESS, CONF_EMAIL, CONF_NAME, CONF_PASSWORD
+from homeassistant.helpers.selector import SelectSelector, SelectSelectorConfig
 
 from .cloud_auth import (
     CloudAccount,
@@ -16,9 +17,7 @@ from .cloud_auth import (
 )
 from .const import (
     CONF_ACCOUNT_ID,
-    CONF_DEVICE_ID,
-    CONF_DEVICE_PN,
-    CONF_DEVICE_SN,
+    CONF_SELECTED_DEVICES,
     CONF_TRANSPORT,
     DOMAIN,
     TRANSPORT_BLE,
@@ -82,24 +81,20 @@ class AnkerConfigFlow(ConfigFlow, domain=DOMAIN):
             if not address:
                 errors["base"] = "address_required"
             else:
-                from homeassistant.components import bluetooth
-
-                device = bluetooth.async_ble_device_from_address(
-                    self.hass, address, connectable=True
+                # Do not require a live advertisement here.  A device may be
+                # powered off, connected to a phone, or temporarily out of
+                # range while it is being configured.  The coordinator will
+                # retry through HA's Bluetooth stack after the entry exists.
+                await self.async_set_unique_id(address.lower())
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=user_input.get(CONF_NAME) or address,
+                    data={
+                        CONF_TRANSPORT: TRANSPORT_BLE,
+                        CONF_ADDRESS: address,
+                        CONF_NAME: user_input.get(CONF_NAME) or address,
+                    },
                 )
-                if device is None:
-                    errors["base"] = "not_found"
-                else:
-                    await self.async_set_unique_id(address.lower())
-                    self._abort_if_unique_id_configured()
-                    return self.async_create_entry(
-                        title=user_input.get(CONF_NAME) or address,
-                        data={
-                            CONF_TRANSPORT: TRANSPORT_BLE,
-                            CONF_ADDRESS: address,
-                            CONF_NAME: user_input.get(CONF_NAME) or address,
-                        },
-                    )
         schema = vol.Schema(
             {
                 vol.Required(CONF_TRANSPORT, default=TRANSPORT_BLE): vol.In(
@@ -184,31 +179,67 @@ class AnkerConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_show_form(
                     step_id="cloud_device", data_schema=vol.Schema({}), errors=errors
                 )
+        configured = {
+            device_id
+            for entry in self.hass.config_entries.async_entries(DOMAIN)
+            if entry.data.get(CONF_ACCOUNT_ID) == self._cloud_account.account_id
+            for item in entry.data.get(CONF_SELECTED_DEVICES, [])
+            if isinstance(item, dict)
+            for device_id in [item.get("device_id")]
+            if isinstance(device_id, str)
+        }
+        available = [device for device in self._cloud_devices if device.device_id not in configured]
         if user_input is not None:
-            device_id = user_input[CONF_DEVICE_ID]
-            device = next(
-                (item for item in self._cloud_devices if item.device_id == device_id), None
-            )
-            if device is None:
-                errors["base"] = "device_not_found"
+            selected_ids = user_input.get(CONF_SELECTED_DEVICES, [])
+            if isinstance(selected_ids, str):
+                selected_ids = [selected_ids]
+            selected = [device for device in available if device.device_id in selected_ids]
+            if not selected or len(selected) != len(set(selected_ids)):
+                errors["base"] = "device_not_found" if selected_ids else "no_devices_selected"
             else:
-                unique_id = f"{TRANSPORT_CLOUD}:{self._cloud_account.account_id}:{device.device_id}"
+                unique_id = (
+                    f"{TRANSPORT_CLOUD}:{self._cloud_account.account_id}:"
+                    f"{','.join(sorted(selected_ids))}"
+                )
                 await self.async_set_unique_id(unique_id)
                 self._abort_if_unique_id_configured()
-                data = {
-                    CONF_TRANSPORT: TRANSPORT_CLOUD,
-                    CONF_ACCOUNT_ID: self._cloud_account.account_id,
-                    CONF_DEVICE_ID: device.device_id,
-                    CONF_NAME: device.name,
-                }
-                if device.device_pn:
-                    data[CONF_DEVICE_PN] = device.device_pn
-                if device.device_sn:
-                    data[CONF_DEVICE_SN] = device.device_sn
-                return self.async_create_entry(title=device.name, data=data)
-        choices = {device.device_id: device.name for device in self._cloud_devices}
+                return self.async_create_entry(
+                    title=(
+                        selected[0].name
+                        if len(selected) == 1
+                        else f"Anker devices ({len(selected)})"
+                    ),
+                    data={
+                        CONF_TRANSPORT: TRANSPORT_CLOUD,
+                        CONF_ACCOUNT_ID: self._cloud_account.account_id,
+                        CONF_SELECTED_DEVICES: [
+                            {
+                                "device_id": device.device_id,
+                                "device_sn": device.device_sn,
+                                "device_pn": device.device_pn,
+                                "name": device.name,
+                                "transport": device.transport,
+                                "address": device.address,
+                                "online": device.online,
+                            }
+                            for device in selected
+                        ],
+                    },
+                )
+        if not available:
+            return self.async_abort(reason="no_devices")
+        choices = [
+            {"value": device.device_id, "label": f"{device.name} ({device.device_pn})"}
+            for device in available
+        ]
         return self.async_show_form(
             step_id="cloud_device",
-            data_schema=vol.Schema({vol.Required(CONF_DEVICE_ID): vol.In(choices)}),
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_SELECTED_DEVICES): SelectSelector(
+                        SelectSelectorConfig(options=choices, multiple=True, mode="list")
+                    )
+                }
+            ),
             errors=errors,
         )
