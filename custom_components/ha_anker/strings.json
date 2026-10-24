@@ -27,7 +27,7 @@
       "account_not_found": "The cached account is no longer available.",
       "auth_expired": "The Anker session expired. Sign in again.",
       "invalid_auth": "Anker rejected the email or password.",
-      "cloud_unavailable": "Anker's encrypted cloud transport is not available yet.",
+      "cloud_unavailable": "Anker cloud service is temporarily unavailable.",
       "device_not_found": "The selected device is no longer available.",
       "no_devices": "No devices are available for this account.",
       "no_devices_selected": "Select at least one device."

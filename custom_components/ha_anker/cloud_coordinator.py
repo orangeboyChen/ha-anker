@@ -21,6 +21,7 @@ from .cloud_auth import (
     CloudAccount,
     CloudAccountStore,
     CloudAuthenticationError,
+    CloudAuthError,
 )
 from .const import CONF_ACCOUNT_ID, CONF_SELECTED_DEVICES, DEFAULT_CLOUD_SCAN_INTERVAL, DOMAIN
 from .mqtt_protocol import decode_a2345_telemetry, decode_envelope, encode_status_envelope
@@ -60,6 +61,8 @@ class _MqttSession:
     async def async_connect(self, info: dict[str, Any]) -> None:
         if self.connected:
             return
+        if self.client is not None:
+            await self.async_close()
         endpoint = _first_text(info, "endpoint_addr", "endpoint")
         certificate = _first_text(info, "certificate_pem", "certificate")
         private_key = _first_text(info, "private_key", "private_key_pem")
@@ -92,10 +95,11 @@ class _MqttSession:
 
         def on_connect(_client, _userdata, _flags, reason_code, _properties) -> None:
             if reason_code.is_failure:
-                loop.call_soon_threadsafe(
-                    connected.set_exception,
-                    ConnectionError(f"Anker MQTT connection failed: {reason_code}"),
-                )
+                if not connected.done():
+                    loop.call_soon_threadsafe(
+                        connected.set_exception,
+                        ConnectionError(f"Anker MQTT connection failed: {reason_code}"),
+                    )
             elif not connected.done():
                 loop.call_soon_threadsafe(connected.set_result, None)
 
@@ -220,6 +224,8 @@ class AnkerCloudCoordinator(DataUpdateCoordinator[dict[str, dict[str, object]]])
         except CloudAuthenticationError as err:
             await manager.async_invalidate(account.account_id)
             raise UpdateFailed("Anker account authentication failed") from err
+        except CloudAuthError as err:
+            raise UpdateFailed(str(err)) from err
         except (OSError, TimeoutError, ValueError) as err:
             raise UpdateFailed(str(err)) from err
 

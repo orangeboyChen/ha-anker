@@ -27,7 +27,7 @@
       "account_not_found": "缓存的账号已不存在。",
       "auth_expired": "Anker 会话已过期，请重新登录。",
       "invalid_auth": "Anker 拒绝了邮箱或密码。",
-      "cloud_unavailable": "Anker 加密云端传输尚未可用。",
+      "cloud_unavailable": "Anker 云服务暂时不可用。",
       "device_not_found": "所选设备已不可用。",
       "no_devices": "此账号没有可用设备。",
       "no_devices_selected": "请至少选择一台设备。"

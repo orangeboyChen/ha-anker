@@ -9,7 +9,7 @@ This custom integration reads the Anker A110A Prime Power Bank over local Blueto
 3. Add the integration from **Settings → Devices & services**. Nearby FF09 devices are discovered automatically; manual Bluetooth-address setup is also available. The cloud path is designed to accept an Anker email/password, reuse cached accounts, refresh sessions, and then let one account add multiple devices.
 4. Keep the power bank in Bluetooth range of the Home Assistant host or a Bluetooth proxy.
 
-The integration uses the local HA Bluetooth stack. It does not need Anker cloud credentials, the mobile app, or HAR session data.
+The BLE path uses the local HA Bluetooth stack. The A2345 cloud path asks for an Anker account during setup; it does not require the mobile app or HAR session data.
 
 ## Current support
 
