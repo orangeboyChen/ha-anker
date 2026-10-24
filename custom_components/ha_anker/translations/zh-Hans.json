@@ -1,0 +1,15 @@
+{
+  "config": {
+    "step": {
+      "confirm": {"title": "Anker 充电宝", "description": "添加附近发现的 Anker 蓝牙设备？"},
+      "user": {"title": "Anker 充电宝", "data": {"address": "蓝牙地址", "name": "名称"}}
+    },
+    "error": {"not_found": "Home Assistant 蓝牙当前未发现此设备。"},
+    "abort": {"already_configured": "此蓝牙设备已配置。", "no_device": "没有可用的设备发现信息。"}
+  },
+  "entity": {
+    "sensor": {"battery": {"name": "电量"}},
+    "binary_sensor": {"connection": {"name": "蓝牙连接"}},
+    "button": {"connect": {"name": "连接"}, "disconnect": {"name": "断开连接"}}
+  }
+}

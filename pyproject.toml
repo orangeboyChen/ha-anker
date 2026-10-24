@@ -1,0 +1,28 @@
+[project]
+name = "ha-anker"
+version = "0.1.0"
+description = "Home Assistant integration for Anker BLE power banks"
+requires-python = ">=3.14.2,<3.15"
+dependencies = ["homeassistant>=2025.1", "cryptography>=43.0.0", "bleak-retry-connector>=4.7.1"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3.0",
+  "pytest-asyncio==1.4.0",
+  "pytest-cov>=6.0.0",
+  "pytest-homeassistant-custom-component==0.13.372",
+  "ruff>=0.11.0",
+]
+
+[tool.pytest.ini_options]
+addopts = "--cov=custom_components.ha_anker.protocol --cov-branch --cov-report=term-missing --cov-fail-under=90"
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]

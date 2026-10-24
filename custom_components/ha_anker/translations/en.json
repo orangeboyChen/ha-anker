@@ -1,0 +1,15 @@
+{
+  "config": {
+    "step": {
+      "confirm": {"title": "Anker Power Bank", "description": "Add this nearby Anker BLE device?"},
+      "user": {"title": "Anker Power Bank", "data": {"address": "Bluetooth address", "name": "Name"}}
+    },
+    "error": {"not_found": "Device is not currently discovered by Home Assistant Bluetooth."},
+    "abort": {"already_configured": "This Bluetooth device is already configured.", "no_device": "No device discovery information was available."}
+  },
+  "entity": {
+    "sensor": {"battery": {"name": "Battery"}},
+    "binary_sensor": {"connection": {"name": "Bluetooth connection"}},
+    "button": {"connect": {"name": "Connect"}, "disconnect": {"name": "Disconnect"}}
+  }
+}

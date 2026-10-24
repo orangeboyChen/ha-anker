@@ -1,0 +1,13 @@
+{
+  "domain": "ha_anker",
+  "name": "Anker BLE Power Bank",
+  "codeowners": ["@orangeboyChen"],
+  "config_flow": true,
+  "dependencies": ["bluetooth_adapters"],
+  "documentation": "https://github.com/orangeboyChen/ha-anker",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "requirements": ["cryptography>=43.0.0", "bleak-retry-connector>=4.7.1"],
+  "version": "0.1.0",
+  "bluetooth": [{"connectable": true, "service_uuid": "8c850001-0302-41c5-b46e-cf057c562025"}]
+}
