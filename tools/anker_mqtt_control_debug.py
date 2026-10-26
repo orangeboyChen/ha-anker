@@ -13,6 +13,7 @@ import base64
 import json
 import queue
 import re
+import secrets
 import ssl
 import sys
 import time
@@ -28,6 +29,8 @@ import paho.mqtt.client as mqtt
 from paho.mqtt.enums import CallbackAPIVersion
 
 from custom_components.ha_anker.mqtt_protocol import (
+    A2345_PRIORITY_MASKS,
+    decode_a2345_telemetry,
     decode_mqtt_zx_frame,
     encode_a2345_set_port_priority,
     encode_a2345_set_port_switch,
@@ -74,50 +77,35 @@ def _decode_envelope(payload: bytes) -> tuple[dict[str, Any], bytes | None]:
 
 
 def parse_param_info(frame: bytes) -> dict[str, Any]:
-    """Parse the A2345 0A00 response (one-byte field lengths)."""
+    """Parse an A2345 telemetry response with the shared integration codec."""
     _group, command, body = decode_mqtt_zx_frame(frame)
-    if command != 0x0A00:
+    if command not in (0x0303, 0x0A00, 0x030F):
         raise ValueError(f"unexpected telemetry command 0x{command:04x}")
-    offset = 1 if body[:1] == b"\x00" else 0
-    fields: dict[int, bytes] = {}
-    while offset < len(body):
-        if offset + 2 > len(body):
-            raise ValueError("truncated A2345 field header")
-        field_id, length = body[offset], body[offset + 1]
-        offset += 2
-        if not length or offset + length > len(body):
-            raise ValueError("truncated A2345 field")
-        fields[field_id] = body[offset : offset + length]
-        offset += length
-
-    result: dict[str, Any] = {
-        "command": command,
-        "body_length": len(body),
-        "field_ids": [f"0x{key:02x}" for key in sorted(fields)],
-        "raw_fields": {f"0x{key:02x}": value.hex() for key, value in sorted(fields.items())},
-    }
-    priority = fields.get(0xA3)
-    if priority is not None and len(priority) >= 2:
-        value = priority[1:]
-        decoded = int.from_bytes(value, "little")
-        if decoded <= 0x0F:
-            result["priority_mask"] = decoded
+    result = decode_a2345_telemetry(frame)
+    result["body_length"] = len(body)
+    result["field_ids"] = [key for key in result.get("raw_fields", {})]
+    if "port_priority_mask" in result:
+        result["priority_mask"] = result["port_priority_mask"]
     ports: list[dict[str, Any]] = []
-    for field_id in range(0xA4, 0xAA):
-        raw = fields.get(field_id)
-        # Each port value is type 0x04 followed by status, mV, mA, and 0.01 W.
-        if raw is None or len(raw) < 8 or raw[0] != 0x04:
+    for port_index, port_name in enumerate(
+        ("usbc_1", "usbc_2", "usbc_3", "usbc_4", "usba_1", "usba_2")
+    ):
+        status = result.get(f"{port_name}_status")
+        if not isinstance(status, int):
             continue
-        value = raw[1:]
+        switch_name = "usba_switch" if port_index >= 4 else f"{port_name}_switch"
+        enabled_value = result.get(switch_name, status)
+        if not isinstance(enabled_value, int):
+            enabled_value = status
         ports.append(
             {
-                "field": f"0x{field_id:02x}",
-                "port": field_id - 0xA4,
-                "enabled": value[0] != 0,
-                "status": value[0],
-                "voltage_v": int.from_bytes(value[1:3], "little") / 1000,
-                "current_a": int.from_bytes(value[3:5], "little") / 1000,
-                "power_w": int.from_bytes(value[5:7], "little") / 100,
+                "field": f"0x{0xA4 + port_index:02x}",
+                "port": port_index,
+                "enabled": enabled_value != 0,
+                "status": status,
+                "voltage_v": result.get(f"{port_name}_voltage"),
+                "current_a": result.get(f"{port_name}_current"),
+                "power_w": result.get(f"{port_name}_power"),
             }
         )
     result["ports"] = ports
@@ -174,13 +162,23 @@ def run_probe(
     desired_enabled: bool | None = None,
     allow_control: bool = True,
 ) -> dict[str, Any]:
-    if not 0 <= port <= 5:
-        raise ValueError("port must be between 0 and 5")
-    if priority_mask is not None and not 0 <= priority_mask <= 0x0F:
-        raise ValueError("priority mask must be between 0 and 15")
+    if not 0 <= port <= 4:
+        raise ValueError("port must be between 0 and 4 (USB-A is a shared rail)")
+    if priority_mask is not None and priority_mask not in A2345_PRIORITY_MASKS:
+        raise ValueError("priority mask is not supported by the charger")
     account_id, _login, mqtt_info = _read_export(auth_path)
     host, endpoint_port = _endpoint(mqtt_info["endpoint_addr"])
-    client_id = str(mqtt_info.get("thing_name") or mqtt_info.get("user_id") or "anker-debug")
+    thing_name = mqtt_info.get("thing_name")
+    mqtt_client_id = (
+        f"{thing_name}_{secrets.randbelow(100000):05d}"
+        if isinstance(thing_name, str) and thing_name
+        else str(mqtt_info.get("client_id") or "anker-debug")
+    )
+    command_client_id = (
+        f"android-{mqtt_info.get('app_name') or 'anker_power'}-"
+        f"{mqtt_info.get('user_id') or account_id}-{mqtt_info.get('certificate_id') or ''}"
+    )
+    app_name = str(mqtt_info.get("app_name") or "anker_power")
 
     import tempfile
 
@@ -198,7 +196,7 @@ def run_probe(
         messages: queue.Queue[tuple[str, bytes]] = queue.Queue()
         seen_messages: list[dict[str, Any]] = []
         connected = queue.Queue()
-        client = mqtt.Client(CallbackAPIVersion.VERSION2, client_id=client_id)
+        client = mqtt.Client(CallbackAPIVersion.VERSION2, client_id=mqtt_client_id)
         client.tls_set_context(context)
         client.on_connect = lambda _c, _u, _f, reason, _p: connected.put(reason)
         client.on_message = lambda _c, _u, msg: messages.put((str(msg.topic), bytes(msg.payload)))
@@ -208,15 +206,15 @@ def run_probe(
             reason = connected.get(timeout=timeout)
             if reason.is_failure:
                 raise ConnectionError(f"MQTT connection failed: {reason}")
-            topic_prefix = f"dt/anker_power/{device_pn}/{device_sn}/#"
-            ack_prefix = f"cmd/anker_power/{device_pn}/{device_sn}/#"
+            topic_prefix = f"dt/{app_name}/{device_pn}/{device_sn}/#"
+            ack_prefix = f"cmd/{app_name}/{device_pn}/{device_sn}/#"
             client.subscribe([(topic_prefix, 0), (ack_prefix, 0)])
 
             def request(
                 envelope: bytes, *, wait_for_status: bool
             ) -> tuple[dict[str, Any], str, int] | None:
                 published = client.publish(
-                    f"cmd/anker_power/{device_pn}/{device_sn}/req", envelope, qos=1
+                    f"cmd/{app_name}/{device_pn}/{device_sn}/req", envelope, qos=1
                 )
                 published.wait_for_publish(timeout=timeout)
                 publish_rc = published.rc
@@ -285,7 +283,7 @@ def run_probe(
                 device_pn=device_pn,
                 device_sn=device_sn,
                 account_id=account_id,
-                client_id=client_id,
+                client_id=command_client_id,
             )
             before_result = request(read_envelope, wait_for_status=True)
             if before_result is None:
@@ -329,7 +327,7 @@ def run_probe(
                 device_pn=device_pn,
                 device_sn=device_sn,
                 account_id=account_id,
-                client_id=client_id,
+                client_id=command_client_id,
                 data=write_frame,
             )
             write_result = request(write_bytes, wait_for_status=False)

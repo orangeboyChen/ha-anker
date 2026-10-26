@@ -19,15 +19,17 @@ COMMAND_TYPES = {
     "getDeviceBssid": 56,
 }
 
+A2345_PRIORITY_MASKS = frozenset((0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 12))
 
-def command_topic(device_pn: str, device_sn: str) -> str:
+
+def command_topic(device_pn: str, device_sn: str, app_name: str = "anker_power") -> str:
     """Return the Anker command topic recovered from the APK."""
-    return f"cmd/anker_power/{device_pn}/{device_sn}/req"
+    return f"cmd/{app_name}/{device_pn}/{device_sn}/req"
 
 
-def response_topic(device_pn: str, device_sn: str) -> str:
+def response_topic(device_pn: str, device_sn: str, app_name: str = "anker_power") -> str:
     """Return the Anker response topic recovered from the APK."""
-    return f"cmd/anker_power/{device_pn}/{device_sn}/app/res"
+    return f"cmd/{app_name}/{device_pn}/{device_sn}/app/res"
 
 
 def encode_envelope(
@@ -150,13 +152,11 @@ def encode_a2345_setting_frame(
     is_ble: bool = False,
     is_more_length: bool = False,
 ) -> bytes:
-    """Encode the A2345 setting payload recovered from ZXCommandTransformer.
+    """Encode the legacy setting map used by older A2345 captures.
 
-    ``A2345DeviceController.sendCommandWithParam`` defaults ``isMoreLength``
-    to ``false``.  The decompiled transformer consequently calls
-    ``CmdUtil.intToList2`` for the trailing ``0x1fc`` length field (the
-    resulting ``Uint8List`` exposes its low byte as ``0xfc``).  The one-byte
-    form is retained for callers that explicitly pass ``isMoreLength=true``.
+    Current A2345 control commands use :func:`encode_a2345_command_frame`
+    below.  Keep this low-level helper for decoding/replaying old captures;
+    it is intentionally not used for live port or mode controls.
     """
     if not items:
         raise ValueError("at least one A2345 setting is required")
@@ -167,24 +167,57 @@ def encode_a2345_setting_frame(
     if any(not value or len(value) > 120 for _key, value in items):
         raise ValueError("A2345 setting values must contain 1 to 120 bytes")
 
-    # AOT emits the key's low byte, then value length + 1 and a type derived
-    # from the length. The setting key itself is not present on the wire.
+    # AOT emits the key's low byte, then value length + 1 (one or two
+    # little-endian bytes depending on isMoreLength) and a type derived from
+    # the value length. The setting key's high byte is not present on wire.
     payload = bytearray((0x42, 0x02, 0x42 if is_ble else 0x44))
     for key, value in sorted(items):
         value_type = {1: 1, 2: 2, 4: 3}.get(len(value), 4)
-        payload.extend((key & 0xFF, len(value) + 1, value_type))
+        payload.append(key & 0xFF)
+        value_length = len(value) + 1
+        if is_more_length:
+            payload.append(value_length)
+        else:
+            payload.extend(value_length.to_bytes(2, "little"))
+        payload.append(value_type)
         payload.extend(value)
 
     now = timestamp if timestamp is not None else int(time.time())
     timestamp_bytes = now.to_bytes(4, "little", signed=False)
-    payload_length = len(payload) + len(timestamp_bytes)
-    length_width = 1 if is_more_length else 2
-    if payload_length >= 1 << (8 * length_width):
-        raise ValueError("A2345 setting payload exceeds the selected length encoding")
+    timestamp_type = 3  # CmdUtil._getDataType(4)
     payload.append(0xFC)
-    payload.extend(payload_length.to_bytes(length_width, "little"))
+    payload.append(len(timestamp_bytes) + 1)
+    payload.append(timestamp_type)
     payload.extend(timestamp_bytes)
     return bytes(payload)
+
+
+def encode_a2345_command_frame(
+    *, command: int, fields: list[tuple[int, bytes]], timestamp: int | None = None
+) -> bytes:
+    """Build the current A2345 ZX command format from the APK/A2345 map.
+
+    The command body starts with ``a1=0x22``.  Each value field includes a
+    one-byte type (``0x01`` for UI values), and the timestamp is the fixed
+    ``fe 05 03 <u32-le>`` field.  The outer ``ff09`` frame carries the command
+    in its normal big-endian two-byte header.
+    """
+    if not 0 <= command <= 0x3FFF:
+        raise ValueError("A2345 command must fit the ZX command field")
+    body = bytearray(b"\xa1\x01\x22")
+    seen: set[int] = set()
+    for field, value in fields:
+        if not 0 <= field <= 0xFF or field in seen:
+            raise ValueError("A2345 command field must be unique and one byte")
+        if not value or len(value) > 254:
+            raise ValueError("A2345 command field value must contain 1 to 254 bytes")
+        seen.add(field)
+        body.extend((field, len(value) + 1, 0x01))
+        body.extend(value)
+    now = timestamp if timestamp is not None else int(time.time())
+    body.extend((0xFE, 0x05, 0x03))
+    body.extend(now.to_bytes(4, "little", signed=False))
+    return encode_mqtt_zx_frame(group=0x0F, command=command, body=bytes(body))
 
 
 def encode_a2345_setting_envelope(
@@ -212,32 +245,45 @@ def encode_a2345_setting_envelope(
 def encode_a2345_set_port_switch(
     *, port: int, enabled: bool, timestamp: int | None = None
 ) -> bytes:
-    """Build the APK's DC relay setting map for one zero-based port index."""
-    if not 0 <= port <= 255:
-        raise ValueError("A2345 port index must fit in one byte")
-    return encode_a2345_setting_frame(
-        items=[(0x0144, bytes((port,))), (0x0146, bytes((int(enabled),)))],
+    """Build the A2345 ``0207`` USB port switch command."""
+    if not 0 <= port <= 4:
+        raise ValueError("A2345 switchable port index must be between 0 and 4")
+    return encode_a2345_command_frame(
+        command=0x0207,
+        fields=[(0xA2, bytes((port,))), (0xA3, bytes((int(enabled),)))],
         timestamp=timestamp,
     )
 
 
 def encode_a2345_set_charging_mode(*, mode: int, timestamp: int | None = None) -> bytes:
-    """Build a non-custom A2345 charging-mode setting map."""
-    if not 0 <= mode <= 255 or mode == 5:
-        raise ValueError("mode must be a one-byte non-custom A2345 mode")
-    return encode_a2345_setting_frame(items=[(0x0144, bytes((mode,)))], timestamp=timestamp)
+    """Build a non-custom A2345 charging-mode command.
+
+    The reference integration names the four supported modes AI Power (1),
+    Connection Priority (2), Dual Laptop (3), and Low Power (4).  Mode 5 is
+    the custom profile command and needs the additional per-port protocol
+    structure, so it is intentionally not generated by this helper.
+    """
+    if mode not in (1, 2, 3, 4):
+        raise ValueError("mode must be one of the non-custom A2345 modes 1 to 4")
+    return encode_a2345_command_frame(
+        command=0x0206, fields=[(0xA2, bytes((mode,)))], timestamp=timestamp
+    )
 
 
 def encode_a2345_set_port_priority(*, mask: int, timestamp: int | None = None) -> bytes:
     """Build the four-port A2345 priority bitmask setting map."""
-    if not 0 <= mask <= 0x0F:
-        raise ValueError("A2345 priority mask must use only its low four bits")
-    return encode_a2345_setting_frame(items=[(0x0144, bytes((mask,)))], timestamp=timestamp)
+    if mask not in A2345_PRIORITY_MASKS:
+        raise ValueError("A2345 priority mask is not supported by the charger")
+    return encode_a2345_command_frame(
+        command=0x020C, fields=[(0xA2, bytes((mask,)))], timestamp=timestamp
+    )
 
 
 def encode_a2345_set_ufcs(*, enabled: bool, timestamp: int | None = None) -> bytes:
     """Build the A2345 UFCS setting map."""
-    return encode_a2345_setting_frame(items=[(0x0144, bytes((int(enabled),)))], timestamp=timestamp)
+    return encode_a2345_command_frame(
+        command=0x0206, fields=[(0xA2, bytes((int(enabled),)))], timestamp=timestamp
+    )
 
 
 def encode_status_envelope(
@@ -293,7 +339,7 @@ def decode_mqtt_zx_frame(value: bytes) -> tuple[int, int, bytes]:
 def decode_a2345_telemetry(value: bytes) -> dict[str, object]:
     """Decode verified A2345 ``0303`` port telemetry without guessing settings."""
     _group, command, body = decode_mqtt_zx_frame(value)
-    if command not in (0x0303, 0x0A00):
+    if command not in (0x0303, 0x0A00, 0x030F):
         raise ValueError(f"unsupported A2345 telemetry command: 0x{command:04x}")
 
     def parse_fields(length_width: int) -> dict[int, bytes]:
@@ -339,13 +385,38 @@ def decode_a2345_telemetry(value: bytes) -> dict[str, object]:
         "command": command,
         "raw_fields": {f"0x{key:02x}": raw.hex() for key, raw in fields.items()},
     }
-    if command == 0x0A00 and (mode := fields.get(0xA2)) and len(mode) <= 4:
-        decoded_mode = int.from_bytes(mode, "little")
-        # A2345 all-info responses can carry a two-byte A2 structure (for
-        # example 44 08), which is not the 0..3 charging-mode enum.
-        if decoded_mode in range(4):
-            result["charging_mode"] = decoded_mode
-    if (priority := fields.get(0xA3)) and len(priority) <= 2:
+    if command == 0x0A00:
+        # The A2345 all-info response uses B0/B1 for display timeout and
+        # charging mode.  A2 is the firmware version and A3 is fault bits;
+        # treating either as the mode/priority field produces plausible but
+        # incorrect values.
+        if mode := fields.get(0xB1):
+            decoded_mode = int.from_bytes(mode, "little")
+            if 1 <= decoded_mode <= 5:
+                result["usage_mode"] = decoded_mode
+                result["charging_mode"] = decoded_mode
+
+        # AA..AE contain the five relay records.  The first four records also
+        # carry the 1/2 priority value at byte 18; USB-A is a single rail even
+        # though telemetry has separate A1/A2 measurement fields.
+        priority_mask = 0
+        priority_seen = 0
+        for index, port in enumerate(("usbc_1", "usbc_2", "usbc_3", "usbc_4", "usba")):
+            record = fields.get(0xAA + index)
+            if not record:
+                continue
+            result[f"{port}_switch"] = record[0]
+            if index < 4 and len(record) > 18:
+                priority_seen += 1
+                if record[18] == 2:
+                    priority_mask |= 1 << index
+        if priority_seen:
+            result["port_priority_mask"] = priority_mask
+
+    # 030F is the dedicated priority read-back message.  Do not inspect A3
+    # for 0303/0A00: in those messages A3 is either a port record or fault
+    # bits, not the priority mask.
+    if command == 0x030F and (priority := fields.get(0xA3)):
         decoded_priority = int.from_bytes(priority, "little")
         if decoded_priority <= 0x0F:
             result["port_priority_mask"] = decoded_priority

@@ -16,7 +16,7 @@ from custom_components.ha_anker.const import (
     TRANSPORT_CLOUD,
 )
 from custom_components.ha_anker.mqtt_protocol import decode_envelope
-from custom_components.ha_anker.select import CloudPortPrioritySelect
+from custom_components.ha_anker.select import CloudChargingModeSelect, CloudPortPrioritySelect
 from custom_components.ha_anker.switch import CloudPortSwitch
 
 DEVICE = {
@@ -77,6 +77,7 @@ def _telemetry(*, enabled: bool, mask: int = 0) -> dict[str, object]:
     return {
         "usbc_1_status": int(enabled),
         "port_priority_mask": mask,
+        "usage_mode": 1,
         "command": 0x0A00,
     }
 
@@ -129,6 +130,44 @@ async def test_priority_select_entity_delegates_to_coordinator(hass, monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_charging_mode_select_entity_delegates_to_coordinator(hass, monkeypatch) -> None:
+    coordinator, _mqtt = _prepare(
+        hass,
+        monkeypatch,
+        telemetry=_telemetry(enabled=False),
+        initial={"device-1": _telemetry(enabled=False)},
+    )
+    coordinator.async_set_charging_mode = AsyncMock()
+    entity = CloudChargingModeSelect(coordinator, DEVICE)
+
+    assert entity.current_option == "ai_power"
+    await entity.async_select_option("dual_laptop")
+
+    coordinator.async_set_charging_mode.assert_awaited_once_with("device-1", 3)
+
+
+@pytest.mark.asyncio
+async def test_charging_mode_write_updates_telemetry_after_state_transition(
+    hass, monkeypatch
+) -> None:
+    telemetry = _telemetry(enabled=False)
+    telemetry["usage_mode"] = 3
+    initial = _telemetry(enabled=False)
+    coordinator, mqtt = _prepare(
+        hass,
+        monkeypatch,
+        telemetry=telemetry,
+        initial={"device-1": initial},
+    )
+
+    await coordinator.async_set_charging_mode("device-1", 3)
+
+    assert coordinator.data == {"device-1": telemetry}
+    frame = decode_envelope(mqtt.published[0])["data"]
+    assert frame[:15] == bytes.fromhex("ff09180003000f0206a10122a20201")
+
+
+@pytest.mark.asyncio
 async def test_port_switch_write_updates_telemetry_after_state_transition(
     hass, monkeypatch
 ) -> None:
@@ -143,7 +182,7 @@ async def test_port_switch_write_updates_telemetry_after_state_transition(
 
     assert coordinator.data == {"device-1": _telemetry(enabled=False)}
     frame = decode_envelope(mqtt.published[0])["data"]
-    assert frame[:11] == bytes.fromhex("4202444402010046020100")
+    assert frame[:16] == bytes.fromhex("ff091c0003000f0207a10122a2020100")
 
 
 @pytest.mark.asyncio

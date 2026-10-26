@@ -9,7 +9,10 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .cloud_coordinator import AnkerCloudCoordinator
 from .const import DOMAIN
 
-_PORTS = ("usbc_1", "usbc_2", "usbc_3", "usbc_4", "usba_1", "usba_2")
+# A2345 reports two USB-A measurement slots, but the reference command map
+# exposes one shared USB-A relay.  Keep both A1/A2 as sensors and expose only
+# the actual five switch selectors here.
+_PORTS = ("usbc_1", "usbc_2", "usbc_3", "usbc_4", "usba")
 
 
 async def async_setup_entry(
@@ -55,6 +58,12 @@ class CloudPortSwitch(CoordinatorEntity[AnkerCloudCoordinator], SwitchEntity):
     def is_on(self) -> bool:
         telemetry = (self.coordinator.data or {}).get(self.device_id, {})
         value = telemetry.get(f"{self.port_name}_status")
+        if self.port_name == "usba":
+            value = telemetry.get("usba_switch")
+            if not isinstance(value, int):
+                value = telemetry.get("usba_1_status", telemetry.get("usba_2_status"))
+        else:
+            value = telemetry.get(f"{self.port_name}_switch", value)
         return isinstance(value, int) and value != 0
 
     async def async_turn_on(self, **kwargs) -> None:

@@ -119,6 +119,9 @@ def test_mqtt_envelope_and_topics_are_offline_and_deterministic() -> None:
     assert json.loads(raw["payload"])["data"] == "b2JzZXJ2ZWQ="
     assert command_topic("A1903", "WIFI-TEST") == "cmd/anker_power/A1903/WIFI-TEST/req"
     assert response_topic("A1903", "WIFI-TEST") == "cmd/anker_power/A1903/WIFI-TEST/app/res"
+    assert command_topic("A1903", "WIFI-TEST", "custom_app") == (
+        "cmd/custom_app/A1903/WIFI-TEST/req"
+    )
     with pytest.raises(ValueError, match="observed"):
         encode_envelope(device_pn="A1903", device_sn="WIFI-TEST", account_id="a", client_id="c")
     with pytest.raises(ValueError, match="base64"):
@@ -139,16 +142,16 @@ def test_a2345_status_request_has_verified_read_only_body() -> None:
 
 def test_a2345_setting_encoders_match_aot_field_layout() -> None:
     assert encode_a2345_set_port_switch(port=2, enabled=True, timestamp=0).hex() == (
-        "4202444402010246020101fc0f0000000000"
+        "ff091c0003000f0207a10122a2020102a3020101fe0503000000009b"
     )
     assert encode_a2345_set_charging_mode(mode=3, timestamp=0).hex() == (
-        "42024444020103fc0b0000000000"
+        "ff09180003000f0206a10122a2020103fe0503000000003e"
     )
     assert encode_a2345_set_port_priority(mask=0b0101, timestamp=0).hex() == (
-        "42024444020105fc0b0000000000"
+        "ff09180003000f020ca10122a2020105fe05030000000032"
     )
     assert encode_a2345_set_ufcs(enabled=False, timestamp=0).hex() == (
-        "42024444020100fc0b0000000000"
+        "ff09180003000f0206a10122a2020100fe0503000000003d"
     )
 
     # The explicit isMoreLength=true branch in ZXCommandTransformer uses one
@@ -157,20 +160,22 @@ def test_a2345_setting_encoders_match_aot_field_layout() -> None:
         encode_a2345_setting_frame(
             items=[(0x0144, b"\x03")], timestamp=0, is_more_length=True
         ).hex()
-        == "42024444020103fc0b00000000"
+        == "42024444020103fc050300000000"
     )
 
 
 def test_a2345_setting_encoder_sorts_fields_and_validates_limits() -> None:
     encoded = encode_a2345_setting_frame(items=[(0x0146, b"\x01"), (0x0144, b"\x02")], timestamp=0)
-    assert encoded[:11] == bytes.fromhex("4202444402010246020101")
-    assert encoded[-6:-4] == bytes.fromhex("0f00")
+    assert encoded[:13] == bytes.fromhex("42024444020001024602000101")
+    assert encoded[-7:-5] == bytes.fromhex("fc05")
     with pytest.raises(ValueError, match="unique"):
         encode_a2345_setting_frame(items=[(0x0144, b"\x01"), (0x0144, b"\x02")])
     with pytest.raises(ValueError, match="custom"):
         encode_a2345_set_charging_mode(mode=5)
-    with pytest.raises(ValueError, match="low four bits"):
+    with pytest.raises(ValueError, match="not supported"):
         encode_a2345_set_port_priority(mask=0x10)
+    with pytest.raises(ValueError, match="not supported"):
+        encode_a2345_set_port_priority(mask=0x07)
 
 
 def test_a2345_setting_envelope_carries_raw_setting_bytes() -> None:
@@ -185,22 +190,44 @@ def test_a2345_setting_envelope_carries_raw_setting_bytes() -> None:
     decoded = decode_envelope(encoded)
     assert decoded["head"]["cmd"] == 34
     assert decoded["head"]["timestamp"] == 0
-    assert decoded["data"] == bytes.fromhex("4202444402010246020101fc0f0000000000")
+    assert decoded["data"] == bytes.fromhex("42024444020001024602000101fc050300000000")
 
 
 def test_a2345_mode_is_decoded_only_from_mode_response() -> None:
     mode_frame = encode_mqtt_zx_frame(
         group=0x0F,
         command=0x0A00,
-        body=b"\x00\xa2\x02\x00\x01\x03",
+        body=b"\x00\xb1\x02\x01\x03",
     )
     telemetry_frame = encode_mqtt_zx_frame(
         group=0x0F,
         command=0x0303,
-        body=b"\x00\xa2\x02\x00\x01\x03",
+        body=b"\x00\xb1\x02\x01\x03",
     )
-    assert decode_a2345_telemetry(mode_frame)["charging_mode"] == 3
-    assert "charging_mode" not in decode_a2345_telemetry(telemetry_frame)
+    assert decode_a2345_telemetry(mode_frame)["usage_mode"] == 3
+    assert "usage_mode" not in decode_a2345_telemetry(telemetry_frame)
+
+
+def test_a2345_param_info_decodes_mode_switches_and_priority_records() -> None:
+    def relay_record(*, enabled: int, priority: int) -> bytes:
+        record = bytearray(19)
+        record[0] = enabled
+        record[18] = priority
+        return bytes(record)
+
+    body = bytearray(b"\x00\xb1\x02\x01\x03")
+    for index, (enabled, priority) in enumerate(((1, 2), (0, 1), (0, 1), (0, 1), (1, 1))):
+        body.extend((0xAA + index, 0x14, 0x01))
+        body.extend(relay_record(enabled=enabled, priority=priority))
+
+    decoded = decode_a2345_telemetry(
+        encode_mqtt_zx_frame(group=0x0F, command=0x0A00, body=bytes(body))
+    )
+
+    assert decoded["usage_mode"] == 3
+    assert decoded["usbc_1_switch"] == 1
+    assert decoded["usba_switch"] == 1
+    assert decoded["port_priority_mask"] == 1
 
 
 def test_a2345_telemetry_decodes_port_measurements() -> None:
@@ -254,8 +281,8 @@ def test_a2345_current_param_info_prefers_a4_port_fields() -> None:
 def test_a2345_current_param_info_decodes_priority_mask_when_unambiguous() -> None:
     frame = encode_mqtt_zx_frame(
         group=0x0F,
-        command=0x0A00,
-        body=b"\x00\xa2\x03\x02\x44\x08\xa3\x03\x02\x00\x00",
+        command=0x030F,
+        body=b"\xa3\x02\x01\x00",
     )
 
     decoded = decode_a2345_telemetry(frame)
