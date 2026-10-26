@@ -3,7 +3,7 @@
 from datetime import timedelta
 
 DOMAIN = "ha_anker"
-PLATFORMS = ("sensor", "button", "binary_sensor")
+PLATFORMS = ("sensor", "button", "binary_sensor", "switch", "select")
 CONF_ADDRESS = "address"
 CONF_NAME = "name"
 CONF_TRANSPORT = "transport"

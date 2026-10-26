@@ -5,3 +5,5 @@ __pycache__/
 *.py[cod]
 coverage.xml
 .coverage
+anker-auth-debug.json
+**/anker-auth-debug.json

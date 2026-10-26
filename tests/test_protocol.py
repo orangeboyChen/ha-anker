@@ -1,5 +1,7 @@
 """Protocol codec tests use captured A110A frames and never access Bluetooth hardware."""
 
+import json
+
 import pytest
 from cryptography.exceptions import InvalidTag
 
@@ -8,6 +10,12 @@ from custom_components.ha_anker.mqtt_protocol import (
     decode_a2345_telemetry,
     decode_envelope,
     decode_mqtt_zx_frame,
+    encode_a2345_set_charging_mode,
+    encode_a2345_set_port_priority,
+    encode_a2345_set_port_switch,
+    encode_a2345_set_ufcs,
+    encode_a2345_setting_envelope,
+    encode_a2345_setting_frame,
     encode_a2345_status_request,
     encode_envelope,
     encode_mqtt_zx_frame,
@@ -104,7 +112,11 @@ def test_mqtt_envelope_and_topics_are_offline_and_deterministic() -> None:
     )
     decoded = decode_envelope(encoded)
     assert decoded["head"]["cmd"] == 34
+    assert decoded["head"]["version"] == "1.0.0.1"
     assert decoded["data"] == b"observed"
+    raw = json.loads(encoded)
+    assert isinstance(raw["payload"], str)
+    assert json.loads(raw["payload"])["data"] == "b2JzZXJ2ZWQ="
     assert command_topic("A1903", "WIFI-TEST") == "cmd/anker_power/A1903/WIFI-TEST/req"
     assert response_topic("A1903", "WIFI-TEST") == "cmd/anker_power/A1903/WIFI-TEST/app/res"
     with pytest.raises(ValueError, match="observed"):
@@ -123,6 +135,72 @@ def test_a2345_status_request_has_verified_read_only_body() -> None:
 
     zero_timestamp = decode_mqtt_zx_frame(encode_a2345_status_request(timestamp=0))[2]
     assert zero_timestamp == bytes.fromhex("a10122fe050300000000")
+
+
+def test_a2345_setting_encoders_match_aot_field_layout() -> None:
+    assert encode_a2345_set_port_switch(port=2, enabled=True, timestamp=0).hex() == (
+        "4202444402010246020101fc0f0000000000"
+    )
+    assert encode_a2345_set_charging_mode(mode=3, timestamp=0).hex() == (
+        "42024444020103fc0b0000000000"
+    )
+    assert encode_a2345_set_port_priority(mask=0b0101, timestamp=0).hex() == (
+        "42024444020105fc0b0000000000"
+    )
+    assert encode_a2345_set_ufcs(enabled=False, timestamp=0).hex() == (
+        "42024444020100fc0b0000000000"
+    )
+
+    # The explicit isMoreLength=true branch in ZXCommandTransformer uses one
+    # length byte and is kept available for legacy captures.
+    assert (
+        encode_a2345_setting_frame(
+            items=[(0x0144, b"\x03")], timestamp=0, is_more_length=True
+        ).hex()
+        == "42024444020103fc0b00000000"
+    )
+
+
+def test_a2345_setting_encoder_sorts_fields_and_validates_limits() -> None:
+    encoded = encode_a2345_setting_frame(items=[(0x0146, b"\x01"), (0x0144, b"\x02")], timestamp=0)
+    assert encoded[:11] == bytes.fromhex("4202444402010246020101")
+    assert encoded[-6:-4] == bytes.fromhex("0f00")
+    with pytest.raises(ValueError, match="unique"):
+        encode_a2345_setting_frame(items=[(0x0144, b"\x01"), (0x0144, b"\x02")])
+    with pytest.raises(ValueError, match="custom"):
+        encode_a2345_set_charging_mode(mode=5)
+    with pytest.raises(ValueError, match="low four bits"):
+        encode_a2345_set_port_priority(mask=0x10)
+
+
+def test_a2345_setting_envelope_carries_raw_setting_bytes() -> None:
+    encoded = encode_a2345_setting_envelope(
+        device_pn="A2345",
+        device_sn="WIFI-TEST",
+        account_id="account-1",
+        client_id="client-1",
+        items=[(0x0144, b"\x02"), (0x0146, b"\x01")],
+        timestamp=0,
+    )
+    decoded = decode_envelope(encoded)
+    assert decoded["head"]["cmd"] == 34
+    assert decoded["head"]["timestamp"] == 0
+    assert decoded["data"] == bytes.fromhex("4202444402010246020101fc0f0000000000")
+
+
+def test_a2345_mode_is_decoded_only_from_mode_response() -> None:
+    mode_frame = encode_mqtt_zx_frame(
+        group=0x0F,
+        command=0x0A00,
+        body=b"\x00\xa2\x02\x00\x01\x03",
+    )
+    telemetry_frame = encode_mqtt_zx_frame(
+        group=0x0F,
+        command=0x0303,
+        body=b"\x00\xa2\x02\x00\x01\x03",
+    )
+    assert decode_a2345_telemetry(mode_frame)["charging_mode"] == 3
+    assert "charging_mode" not in decode_a2345_telemetry(telemetry_frame)
 
 
 def test_a2345_telemetry_decodes_port_measurements() -> None:
@@ -151,6 +229,38 @@ def test_a2345_telemetry_decodes_port_measurements() -> None:
     assert decoded["total_current"] == 0.569
     assert decoded["total_power"] == 10.0
     assert decoded["nonzero_status_count"] == 2
+
+
+def test_a2345_current_param_info_prefers_a4_port_fields() -> None:
+    def port(status: int, voltage_mv: int, current_ma: int, power_tenth_w: int) -> bytes:
+        return (
+            bytes((status,))
+            + voltage_mv.to_bytes(2, "little")
+            + current_ma.to_bytes(2, "little")
+            + power_tenth_w.to_bytes(2, "little")
+        )
+
+    body = b"\x00\xa2\x03\x02\x44\x08\xa4\x08\x04" + port(1, 5000, 20, 10)
+    frame = encode_mqtt_zx_frame(group=0x0F, command=0x0A00, body=body)
+
+    decoded = decode_a2345_telemetry(frame)
+
+    assert decoded["usbc_1_voltage"] == 5.0
+    assert decoded["usbc_1_current"] == 0.02
+    assert decoded["usbc_1_power"] == 0.1
+    assert decoded["usbc_1_status"] == 1
+
+
+def test_a2345_current_param_info_decodes_priority_mask_when_unambiguous() -> None:
+    frame = encode_mqtt_zx_frame(
+        group=0x0F,
+        command=0x0A00,
+        body=b"\x00\xa2\x03\x02\x44\x08\xa3\x03\x02\x00\x00",
+    )
+
+    decoded = decode_a2345_telemetry(frame)
+
+    assert decoded["port_priority_mask"] == 0
 
 
 def test_status_envelope_embeds_the_same_timestamp_and_frame() -> None:
