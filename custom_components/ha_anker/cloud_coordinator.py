@@ -29,10 +29,10 @@ from .mqtt_protocol import (
     A2345_PRIORITY_MASKS,
     decode_a2345_telemetry,
     decode_envelope,
+    encode_a2345_control_envelope,
     encode_a2345_set_charging_mode,
     encode_a2345_set_port_priority,
     encode_a2345_set_port_switch,
-    encode_envelope,
     encode_status_envelope,
 )
 
@@ -256,7 +256,7 @@ class AnkerCloudCoordinator(DataUpdateCoordinator[dict[str, dict[str, object]]])
             if not isinstance(before_value, int):
                 before_value = before_data.get(f"{port_names[port]}_status")
             client_id = _command_client_id(info, account)
-            envelope = encode_envelope(
+            envelope = encode_a2345_control_envelope(
                 device_pn=pn,
                 device_sn=sn,
                 account_id=account.user_id or account.account_id,
@@ -320,7 +320,7 @@ class AnkerCloudCoordinator(DataUpdateCoordinator[dict[str, dict[str, object]]])
                 raise ValueError("A2345 device metadata is incomplete")
             before_value = (self.data or {}).get(device_id, {}).get("port_priority_mask")
             client_id = _command_client_id(info, account)
-            envelope = encode_envelope(
+            envelope = encode_a2345_control_envelope(
                 device_pn=pn,
                 device_sn=sn,
                 account_id=account.user_id or account.account_id,
@@ -381,7 +381,7 @@ class AnkerCloudCoordinator(DataUpdateCoordinator[dict[str, dict[str, object]]])
                 raise ValueError("A2345 device metadata is incomplete")
             before_value = (self.data or {}).get(device_id, {}).get("usage_mode")
             client_id = _command_client_id(info, account)
-            envelope = encode_envelope(
+            envelope = encode_a2345_control_envelope(
                 device_pn=pn,
                 device_sn=sn,
                 account_id=account.user_id or account.account_id,

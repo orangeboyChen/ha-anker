@@ -32,9 +32,9 @@ from custom_components.ha_anker.mqtt_protocol import (
     A2345_PRIORITY_MASKS,
     decode_a2345_telemetry,
     decode_mqtt_zx_frame,
+    encode_a2345_control_envelope,
     encode_a2345_set_port_priority,
     encode_a2345_set_port_switch,
-    encode_envelope,
     encode_status_envelope,
 )
 
@@ -323,7 +323,7 @@ def run_probe(
                 }
             # Keep envelope construction in the integration codec so this
             # probe uses exactly the same outer schema as HA.
-            write_bytes = encode_envelope(
+            write_bytes = encode_a2345_control_envelope(
                 device_pn=device_pn,
                 device_sn=device_sn,
                 account_id=account_id,

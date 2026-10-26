@@ -41,6 +41,11 @@ def encode_envelope(
     data: bytes | None = None,
     command_type: str = "normalCommand",
     timestamp: int | None = None,
+    head_cmd: int | None = None,
+    cmd_status: int = 4,
+    sign_code: int = 2,
+    sess_id: str = "1",
+    msg_seq: int = 2,
 ) -> bytes:
     """Encode the confirmed outer JSON schema, without inventing model payload bytes."""
     if command_type not in COMMAND_TYPES:
@@ -64,11 +69,11 @@ def encode_envelope(
         # JSON decoder but is not the app-observed wire value.
         "version": "1.0.0.1",
         "client_id": client_id,
-        "sess_id": "1",
-        "msg_seq": 2,
-        "cmd": COMMAND_TYPES[command_type],
-        "cmd_status": 4,
-        "sign_code": 2,
+        "sess_id": sess_id,
+        "msg_seq": msg_seq,
+        "cmd": COMMAND_TYPES[command_type] if head_cmd is None else head_cmd,
+        "cmd_status": cmd_status,
+        "sign_code": sign_code,
         "seed": "1",
         "timestamp": timestamp if timestamp is not None else int(time.time()),
         "device_pn": device_pn,
@@ -82,6 +87,31 @@ def encode_envelope(
         {"head": head, "payload": json.dumps(payload, separators=(",", ":"))},
         separators=(",", ":"),
     ).encode()
+
+
+def encode_a2345_control_envelope(
+    *,
+    device_pn: str,
+    device_sn: str,
+    account_id: str,
+    client_id: str,
+    data: bytes,
+    timestamp: int | None = None,
+) -> bytes:
+    """Encode the control envelope used by the reference A2345 MQTT client."""
+    return encode_envelope(
+        device_pn=device_pn,
+        device_sn=device_sn,
+        account_id=account_id,
+        client_id=client_id,
+        data=data,
+        timestamp=timestamp,
+        head_cmd=17,
+        cmd_status=2,
+        sign_code=1,
+        sess_id="1234-5678",
+        msg_seq=1,
+    )
 
 
 def decode_envelope(value: bytes | str) -> dict[str, Any]:

@@ -10,6 +10,7 @@ from custom_components.ha_anker.mqtt_protocol import (
     decode_a2345_telemetry,
     decode_envelope,
     decode_mqtt_zx_frame,
+    encode_a2345_control_envelope,
     encode_a2345_set_charging_mode,
     encode_a2345_set_port_priority,
     encode_a2345_set_port_switch,
@@ -126,6 +127,25 @@ def test_mqtt_envelope_and_topics_are_offline_and_deterministic() -> None:
         encode_envelope(device_pn="A1903", device_sn="WIFI-TEST", account_id="a", client_id="c")
     with pytest.raises(ValueError, match="base64"):
         decode_envelope('{"head": {}, "payload": {"data": "bad!"}}')
+
+
+def test_a2345_control_envelope_matches_reference_client() -> None:
+    encoded = encode_a2345_control_envelope(
+        device_pn="A2345",
+        device_sn="WIFI-TEST",
+        account_id="account-1",
+        client_id="client-1",
+        data=b"control",
+        timestamp=123,
+    )
+    head = decode_envelope(encoded)["head"]
+    assert {key: head[key] for key in ("cmd", "cmd_status", "sign_code", "sess_id", "msg_seq")} == {
+        "cmd": 17,
+        "cmd_status": 2,
+        "sign_code": 1,
+        "sess_id": "1234-5678",
+        "msg_seq": 1,
+    }
 
 
 def test_a2345_status_request_has_verified_read_only_body() -> None:

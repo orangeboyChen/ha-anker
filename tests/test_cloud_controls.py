@@ -48,6 +48,7 @@ class FakeMqtt:
 
     async def async_publish(self, *, pn: str, sn: str, envelope: bytes) -> None:
         assert (pn, sn) == ("A2345", "TEST-SN-1")
+        assert decode_envelope(envelope)["head"]["cmd"] == 17
         self.published.append(envelope)
 
     async def async_request(self, *, pn: str, sn: str, envelope: bytes) -> dict[str, object]:
