@@ -2,10 +2,6 @@
   "config": {
     "step": {
       "confirm": {"title": "Anker Power Bank", "description": "Add this nearby Anker BLE device?"},
-      "user": {
-        "title": "Anker device",
-        "data": {"transport": "Connection", "address": "Bluetooth address", "name": "Name"}
-      },
       "cloud_account": {
         "title": "Anker account",
         "description": "Choose a cached account or add another one.",
@@ -13,7 +9,7 @@
       },
       "cloud_login": {
         "title": "Sign in to Anker",
-        "data": {"email": "Email", "password": "Password"}
+        "data": {"email": "Phone number", "password": "Password"}
       },
       "cloud_device": {
         "title": "Choose an Anker device",
@@ -22,15 +18,16 @@
       }
     },
     "error": {
-      "address_required": "Enter a Bluetooth address.",
-      "not_found": "Device is not currently discovered by Home Assistant Bluetooth.",
       "account_not_found": "The cached account is no longer available.",
       "auth_expired": "The Anker session expired. Sign in again.",
-      "invalid_auth": "Anker rejected the email or password.",
+      "invalid_auth": "Anker rejected the phone number or password.",
       "cloud_unavailable": "Anker cloud service is temporarily unavailable.",
       "device_not_found": "The selected device is no longer available.",
       "no_devices": "No devices are available for this account.",
-      "no_devices_selected": "Select at least one device."
+      "no_devices_selected": "Select at least one device.",
+      "mixed_transports": "Add Bluetooth and Wi-Fi devices in separate steps.",
+      "select_one_bluetooth": "Add Bluetooth devices one at a time.",
+      "bluetooth_address_missing": "Anker did not provide a Bluetooth address for this device."
     },
     "abort": {
       "already_configured": "This device is already configured.",

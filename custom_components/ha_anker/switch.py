@@ -13,6 +13,13 @@ from .const import DOMAIN
 # exposes one shared USB-A relay.  Keep both A1/A2 as sensors and expose only
 # the actual five switch selectors here.
 _PORTS = ("usbc_1", "usbc_2", "usbc_3", "usbc_4", "usba")
+_PORT_NAMES = {
+    "usbc_1": "USB C1",
+    "usbc_2": "USB C2",
+    "usbc_3": "USB C3",
+    "usbc_4": "USB C4",
+    "usba": "USB A",
+}
 
 
 async def async_setup_entry(
@@ -42,7 +49,7 @@ class CloudPortSwitch(CoordinatorEntity[AnkerCloudCoordinator], SwitchEntity):
         self.port = port
         self.port_name = port_name
         self._attr_unique_id = f"{self.device_id}_{port_name}_switch"
-        self._attr_name = f"{port_name.replace('_', ' ').title()} switch"
+        self._attr_name = f"{_PORT_NAMES[port_name]} Switch"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, self.device_id)},
             "name": device.get("name") or device.get("device_sn") or "Anker Charger",

@@ -17,6 +17,7 @@ from .cloud_auth import (
 )
 from .const import (
     CONF_ACCOUNT_ID,
+    CONF_DEVICE_ID,
     CONF_SELECTED_DEVICES,
     CONF_TRANSPORT,
     DOMAIN,
@@ -72,39 +73,8 @@ class AnkerConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="confirm", data_schema=vol.Schema({}))
 
     async def async_step_user(self, user_input: dict | None = None) -> ConfigFlowResult:
-        """Choose local Bluetooth setup or cloud account setup."""
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            if user_input.get(CONF_TRANSPORT) == TRANSPORT_CLOUD:
-                return await self.async_step_cloud_account()
-            address = str(user_input.get(CONF_ADDRESS, "")).strip()
-            if not address:
-                errors["base"] = "address_required"
-            else:
-                # Do not require a live advertisement here.  A device may be
-                # powered off, connected to a phone, or temporarily out of
-                # range while it is being configured.  The coordinator will
-                # retry through HA's Bluetooth stack after the entry exists.
-                await self.async_set_unique_id(address.lower())
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=user_input.get(CONF_NAME) or address,
-                    data={
-                        CONF_TRANSPORT: TRANSPORT_BLE,
-                        CONF_ADDRESS: address,
-                        CONF_NAME: user_input.get(CONF_NAME) or address,
-                    },
-                )
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_TRANSPORT, default=TRANSPORT_BLE): vol.In(
-                    {TRANSPORT_BLE: "Bluetooth", TRANSPORT_CLOUD: "Anker cloud"}
-                ),
-                vol.Optional(CONF_ADDRESS): str,
-                vol.Optional(CONF_NAME): str,
-            }
-        )
-        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+        """Start with Anker login; choose Bluetooth or cloud devices by model."""
+        return await self.async_step_cloud_account(user_input)
 
     async def async_step_cloud_account(self, user_input: dict | None = None) -> ConfigFlowResult:
         """Select a cached account or start a new login."""
@@ -183,6 +153,11 @@ class AnkerConfigFlow(ConfigFlow, domain=DOMAIN):
                     step_id="cloud_device", data_schema=vol.Schema({}), errors=errors
                 )
         configured = {
+            entry.data.get(CONF_DEVICE_ID)
+            for entry in self.hass.config_entries.async_entries(DOMAIN)
+            if isinstance(entry.data.get(CONF_DEVICE_ID), str)
+        }
+        configured.update(
             device_id
             for entry in self.hass.config_entries.async_entries(DOMAIN)
             if entry.data.get(CONF_ACCOUNT_ID) == self._cloud_account.account_id
@@ -190,12 +165,8 @@ class AnkerConfigFlow(ConfigFlow, domain=DOMAIN):
             if isinstance(item, dict)
             for device_id in [item.get("device_id")]
             if isinstance(device_id, str)
-        }
-        available = [
-            device
-            for device in self._cloud_devices
-            if device.transport == TRANSPORT_CLOUD and device.device_id not in configured
-        ]
+        )
+        available = [device for device in self._cloud_devices if device.device_id not in configured]
         if user_input is not None:
             selected_ids = user_input.get(CONF_SELECTED_DEVICES, [])
             if isinstance(selected_ids, str):
@@ -203,6 +174,25 @@ class AnkerConfigFlow(ConfigFlow, domain=DOMAIN):
             selected = [device for device in available if device.device_id in selected_ids]
             if not selected or len(selected) != len(set(selected_ids)):
                 errors["base"] = "device_not_found" if selected_ids else "no_devices_selected"
+            elif len({device.transport for device in selected}) != 1:
+                errors["base"] = "mixed_transports"
+            elif selected[0].transport == TRANSPORT_BLE and len(selected) != 1:
+                errors["base"] = "select_one_bluetooth"
+            elif selected[0].transport == TRANSPORT_BLE and not selected[0].address:
+                errors["base"] = "bluetooth_address_missing"
+            elif selected[0].transport == TRANSPORT_BLE:
+                device = selected[0]
+                await self.async_set_unique_id(device.address.lower())
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=device.name,
+                    data={
+                        CONF_TRANSPORT: TRANSPORT_BLE,
+                        CONF_ADDRESS: device.address,
+                        CONF_NAME: device.name,
+                        CONF_DEVICE_ID: device.device_id,
+                    },
+                )
             else:
                 unique_id = (
                     f"{TRANSPORT_CLOUD}:{self._cloud_account.account_id}:"
@@ -236,7 +226,13 @@ class AnkerConfigFlow(ConfigFlow, domain=DOMAIN):
         if not available:
             return self.async_abort(reason="no_devices")
         choices = [
-            {"value": device.device_id, "label": f"{device.name} ({device.device_pn})"}
+            {
+                "value": device.device_id,
+                "label": (
+                    f"{device.name} ({device.device_pn}, "
+                    f"{'Bluetooth' if device.transport == TRANSPORT_BLE else 'Wi-Fi'})"
+                ),
+            }
             for device in available
         ]
         return self.async_show_form(

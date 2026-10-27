@@ -17,6 +17,7 @@ from custom_components.ha_anker.const import (
 )
 from custom_components.ha_anker.mqtt_protocol import decode_envelope
 from custom_components.ha_anker.select import CloudChargingModeSelect, CloudPortPrioritySelect
+from custom_components.ha_anker.sensor import CloudPortSensor
 from custom_components.ha_anker.switch import CloudPortSwitch
 
 DEVICE = {
@@ -111,6 +112,24 @@ async def test_port_switch_entity_delegates_to_coordinator(hass, monkeypatch) ->
     await entity.async_turn_off()
 
     coordinator.async_set_port_switch.assert_awaited_once_with("device-1", 0, False)
+    assert entity.name == "USB C1 Switch"
+
+
+def test_cloud_status_is_readable_and_measurements_are_disabled_by_default(
+    hass, monkeypatch
+) -> None:
+    coordinator, _mqtt = _prepare(
+        hass,
+        monkeypatch,
+        telemetry={"usbc_1_status": 2},
+        initial={"device-1": {"usbc_1_status": 2}},
+    )
+    status = CloudPortSensor(coordinator, DEVICE, "usbc_1", "status")
+    power = CloudPortSensor(coordinator, DEVICE, "usbc_1", "power")
+
+    assert status.native_value == "Input"
+    assert status.entity_registry_enabled_default is True
+    assert power.entity_registry_enabled_default is False
 
 
 @pytest.mark.asyncio
