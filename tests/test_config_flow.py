@@ -42,6 +42,17 @@ async def test_user_flow_starts_with_account_selection(hass) -> None:
     assert result["step_id"] == "cloud_login"
 
 
+def test_transport_label_is_localized(hass, monkeypatch) -> None:
+    flow = _flow(hass)
+    monkeypatch.setattr(hass.config, "language", "zh-Hans")
+
+    assert flow._transport_label(TRANSPORT_BLE) == "蓝牙"
+    assert flow._transport_label(TRANSPORT_CLOUD) == "Wi-Fi"
+
+    monkeypatch.setattr(hass.config, "language", "en")
+    assert flow._transport_label(TRANSPORT_BLE) == "Bluetooth"
+
+
 @pytest.mark.asyncio
 async def test_account_device_selection_adds_ble_device_without_address_entry(hass) -> None:
     flow = _flow(hass)

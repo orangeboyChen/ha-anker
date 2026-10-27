@@ -112,7 +112,8 @@ async def test_port_switch_entity_delegates_to_coordinator(hass, monkeypatch) ->
     await entity.async_turn_off()
 
     coordinator.async_set_port_switch.assert_awaited_once_with("device-1", 0, False)
-    assert entity.name == "USB C1 Switch"
+    assert entity.translation_key == "port_switch"
+    assert entity.translation_placeholders == {"port": "USB C1"}
 
 
 def test_cloud_status_is_readable_and_measurements_are_disabled_by_default(
@@ -126,10 +127,14 @@ def test_cloud_status_is_readable_and_measurements_are_disabled_by_default(
     )
     status = CloudPortSensor(coordinator, DEVICE, "usbc_1", "status")
     power = CloudPortSensor(coordinator, DEVICE, "usbc_1", "power")
+    voltage = CloudPortSensor(coordinator, DEVICE, "usbc_1", "voltage")
+    current = CloudPortSensor(coordinator, DEVICE, "usbc_1", "current")
 
-    assert status.native_value == "Input"
-    assert status.entity_registry_enabled_default is True
+    assert status.native_value == "input"
+    assert status.entity_registry_enabled_default is False
     assert power.entity_registry_enabled_default is False
+    assert voltage.entity_registry_enabled_default is False
+    assert current.entity_registry_enabled_default is False
 
 
 @pytest.mark.asyncio

@@ -45,7 +45,7 @@ class CloudPortPrioritySelect(CoordinatorEntity[AnkerCloudCoordinator], SelectEn
         super().__init__(coordinator)
         self.device_id = str(device["device_id"])
         self._attr_unique_id = f"{self.device_id}_port_priority_mask"
-        self._attr_name = "Port priority mask"
+        self._attr_translation_key = "port_priority"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, self.device_id)},
             "name": device.get("name") or device.get("device_sn") or "Anker Charger",
@@ -83,7 +83,7 @@ class CloudChargingModeSelect(CoordinatorEntity[AnkerCloudCoordinator], SelectEn
         super().__init__(coordinator)
         self.device_id = str(device["device_id"])
         self._attr_unique_id = f"{self.device_id}_usage_mode"
-        self._attr_name = "Charging mode"
+        self._attr_translation_key = "charging_mode"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, self.device_id)},
             "name": device.get("name") or device.get("device_sn") or "Anker Charger",

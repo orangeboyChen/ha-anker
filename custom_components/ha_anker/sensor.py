@@ -12,24 +12,24 @@ from .const import DOMAIN
 from .coordinator import AnkerCoordinator
 
 _A110A_APPLICATION_METRICS = (
-    ("total_charging_power", "Total charging power", "W", SensorDeviceClass.POWER),
-    ("total_discharging_power", "Total discharging power", "W", SensorDeviceClass.POWER),
-    ("c1_power", "C1 power", "W", SensorDeviceClass.POWER),
-    ("c1_voltage", "C1 voltage", "V", SensorDeviceClass.VOLTAGE),
-    ("c1_current", "C1 current", "A", SensorDeviceClass.CURRENT),
-    ("c2_power", "C2 power", "W", SensorDeviceClass.POWER),
-    ("c2_voltage", "C2 voltage", "V", SensorDeviceClass.VOLTAGE),
-    ("c2_current", "C2 current", "A", SensorDeviceClass.CURRENT),
-    ("a_power", "USB-A power", "W", SensorDeviceClass.POWER),
-    ("a_voltage", "USB-A voltage", "V", SensorDeviceClass.VOLTAGE),
-    ("a_current", "USB-A current", "A", SensorDeviceClass.CURRENT),
-    ("c1_power_status", "C1 power status", None, None),
-    ("c2_power_status", "C2 power status", None, None),
-    ("a_power_status", "USB-A power status", None, None),
-    ("health", "Battery health", PERCENTAGE, None),
-    ("battery_cycles", "Battery cycles", "cycles", None),
-    ("battery_temperature", "Battery temperature", "°C", SensorDeviceClass.TEMPERATURE),
-    ("shell_temperature", "Shell temperature", "°C", SensorDeviceClass.TEMPERATURE),
+    ("total_charging_power", "W", SensorDeviceClass.POWER),
+    ("total_discharging_power", "W", SensorDeviceClass.POWER),
+    ("c1_power", "W", SensorDeviceClass.POWER),
+    ("c1_voltage", "V", SensorDeviceClass.VOLTAGE),
+    ("c1_current", "A", SensorDeviceClass.CURRENT),
+    ("c2_power", "W", SensorDeviceClass.POWER),
+    ("c2_voltage", "V", SensorDeviceClass.VOLTAGE),
+    ("c2_current", "A", SensorDeviceClass.CURRENT),
+    ("a_power", "W", SensorDeviceClass.POWER),
+    ("a_voltage", "V", SensorDeviceClass.VOLTAGE),
+    ("a_current", "A", SensorDeviceClass.CURRENT),
+    ("c1_power_status", None, None),
+    ("c2_power_status", None, None),
+    ("a_power_status", None, None),
+    ("health", PERCENTAGE, None),
+    ("battery_cycles", "cycles", None),
+    ("battery_temperature", "°C", SensorDeviceClass.TEMPERATURE),
+    ("shell_temperature", "°C", SensorDeviceClass.TEMPERATURE),
 )
 
 
@@ -58,8 +58,8 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     entities = [AnkerBatterySensor(coordinator)]
     entities.extend(
-        AnkerApplicationSensor(coordinator, key, name, unit, device_class)
-        for key, name, unit, device_class in _A110A_APPLICATION_METRICS
+        AnkerApplicationSensor(coordinator, key, unit, device_class)
+        for key, unit, device_class in _A110A_APPLICATION_METRICS
     )
     async_add_entities(entities)
 
@@ -111,13 +111,12 @@ class AnkerApplicationSensor(CoordinatorEntity[AnkerCoordinator], SensorEntity):
         self,
         coordinator: AnkerCoordinator,
         key: str,
-        name: str,
         unit: str | None,
         device_class: SensorDeviceClass | None,
     ) -> None:
         super().__init__(coordinator)
         self.key = key
-        self._attr_name = name
+        self._attr_translation_key = key
         self._attr_unique_id = f"{coordinator.address.lower()}_{key}"
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
@@ -140,7 +139,7 @@ class AnkerApplicationSensor(CoordinatorEntity[AnkerCoordinator], SensorEntity):
         """Return the verified application-level value, if present."""
         value = (self.coordinator.data or {}).get(self.key)
         if self.key.endswith("_power_status"):
-            return {0: "No data", 1: "Output", 2: "Input"}.get(value)
+            return {0: "idle", 1: "output", 2: "input"}.get(value)
         return value
 
 
@@ -149,6 +148,7 @@ class CloudPortSensor(CoordinatorEntity[AnkerCloudCoordinator], SensorEntity):
 
     _attr_has_entity_name = True
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator, device: dict, port: str, metric: str) -> None:
         super().__init__(coordinator)
@@ -156,16 +156,17 @@ class CloudPortSensor(CoordinatorEntity[AnkerCloudCoordinator], SensorEntity):
         self.port = port
         self.metric = metric
         self._attr_unique_id = f"{self.device_id}_{port}_{metric}"
-        port_name = {
-            "usbc_1": "USB C1",
-            "usbc_2": "USB C2",
-            "usbc_3": "USB C3",
-            "usbc_4": "USB C4",
-            "usba_1": "USB A1",
-            "usba_2": "USB A2",
-        }[port]
-        self._attr_name = f"{port_name} {metric.title()}"
-        self._attr_entity_registry_enabled_default = metric == "status"
+        self._attr_translation_key = f"port_{metric}"
+        self._attr_translation_placeholders = {
+            "port": {
+                "usbc_1": "USB C1",
+                "usbc_2": "USB C2",
+                "usbc_3": "USB C3",
+                "usbc_4": "USB C4",
+                "usba_1": "USB-A1",
+                "usba_2": "USB-A2",
+            }[port]
+        }
         self._attr_native_unit_of_measurement = {
             "status": None,
             "voltage": "V",
@@ -192,7 +193,7 @@ class CloudPortSensor(CoordinatorEntity[AnkerCloudCoordinator], SensorEntity):
         telemetry = (self.coordinator.data or {}).get(self.device_id, {})
         value = telemetry.get(f"{self.port}_{self.metric}")
         if self.metric == "status":
-            return {0: "Idle", 1: "Output", 2: "Input"}.get(value)
+            return {0: "idle", 1: "output", 2: "input"}.get(value)
         return value
 
     @property
@@ -213,11 +214,7 @@ class CloudAggregateSensor(CoordinatorEntity[AnkerCloudCoordinator], SensorEntit
         self.device_id = str(device["device_id"])
         self.metric = metric
         self._attr_unique_id = f"{self.device_id}_{metric}"
-        self._attr_name = {
-            "total_current": "Total current",
-            "total_power": "Total power",
-            "nonzero_status_count": "Non-zero port status count",
-        }[metric]
+        self._attr_translation_key = metric
         self._attr_native_unit_of_measurement = {
             "total_current": "A",
             "total_power": "W",
@@ -251,12 +248,13 @@ class CloudRawTelemetrySensor(CoordinatorEntity[AnkerCloudCoordinator], SensorEn
 
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator, device: dict) -> None:
         super().__init__(coordinator)
         self.device_id = str(device["device_id"])
         self._attr_unique_id = f"{self.device_id}_raw_telemetry"
-        self._attr_name = "Raw telemetry"
+        self._attr_translation_key = "raw_telemetry"
         self._attr_icon = "mdi:code-json"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, self.device_id)},

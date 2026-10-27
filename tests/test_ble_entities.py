@@ -23,9 +23,8 @@ def _coordinator(hass) -> AnkerCoordinator:
 
 def test_application_sensor_uses_decoded_value_and_waits_for_missing_data(hass) -> None:
     coordinator = _coordinator(hass)
-    sensor = AnkerApplicationSensor(
-        coordinator, "battery_temperature", "Battery temperature", "°C", None
-    )
+    sensor = AnkerApplicationSensor(coordinator, "battery_temperature", "°C", None)
+    assert sensor.entity_registry_enabled_default is False
 
     coordinator.data = {"battery_temperature": 26.0}
     assert sensor.native_value == 26.0
@@ -34,3 +33,12 @@ def test_application_sensor_uses_decoded_value_and_waits_for_missing_data(hass) 
     coordinator.data = {"raw_fields": {"0xa2": "04003500"}}
     assert sensor.native_value is None
     assert sensor.available is False
+
+
+def test_application_status_uses_translatable_states(hass) -> None:
+    coordinator = _coordinator(hass)
+    sensor = AnkerApplicationSensor(coordinator, "c1_power_status", None, None)
+    coordinator.data = {"c1_power_status": 2}
+
+    assert sensor.native_value == "input"
+    assert sensor.entity_registry_enabled_default is False

@@ -4,7 +4,7 @@
       "confirm": {"title": "Anker 充电宝", "description": "添加附近发现的 Anker 蓝牙设备？"},
       "cloud_account": {
         "title": "Anker 账号",
-        "description": "选择已缓存的账号，或新增账号。",
+        "description": "选择已保存的账号，或使用其他手机号登录。",
         "data": {"account_id": "账号"}
       },
       "cloud_login": {
@@ -13,7 +13,7 @@
       },
       "cloud_device": {
         "title": "选择 Anker 设备",
-        "description": "一个账号可以有多台设备。",
+        "description": "选择一台蓝牙充电宝，或选择一台或多台 Wi-Fi 充电器。",
         "data": {"selected_devices": "设备"}
       }
     },
@@ -32,8 +32,47 @@
     "abort": {"already_configured": "此设备已配置。", "no_device": "没有可用的设备发现信息。"}
   },
   "entity": {
-    "sensor": {"battery": {"name": "电量"}},
+    "sensor": {
+      "battery": {"name": "电量"},
+      "total_charging_power": {"name": "总输入功率"},
+      "total_discharging_power": {"name": "总输出功率"},
+      "c1_power": {"name": "USB C1 功率"},
+      "c1_voltage": {"name": "USB C1 电压"},
+      "c1_current": {"name": "USB C1 电流"},
+      "c2_power": {"name": "USB C2 功率"},
+      "c2_voltage": {"name": "USB C2 电压"},
+      "c2_current": {"name": "USB C2 电流"},
+      "a_power": {"name": "USB-A 功率"},
+      "a_voltage": {"name": "USB-A 电压"},
+      "a_current": {"name": "USB-A 电流"},
+      "c1_power_status": {"name": "USB C1 输出状态", "state": {"idle": "空闲", "output": "输出", "input": "输入"}},
+      "c2_power_status": {"name": "USB C2 输出状态", "state": {"idle": "空闲", "output": "输出", "input": "输入"}},
+      "a_power_status": {"name": "USB-A 输出状态", "state": {"idle": "空闲", "output": "输出", "input": "输入"}},
+      "health": {"name": "电池健康度"},
+      "battery_cycles": {"name": "电池循环次数"},
+      "battery_temperature": {"name": "电池温度"},
+      "shell_temperature": {"name": "外壳温度"},
+      "port_status": {"name": "{port} 状态", "state": {"idle": "空闲", "output": "输出", "input": "输入"}},
+      "port_voltage": {"name": "{port} 电压"},
+      "port_current": {"name": "{port} 电流"},
+      "port_power": {"name": "{port} 功率"},
+      "total_current": {"name": "总电流"},
+      "total_power": {"name": "总功率"},
+      "nonzero_status_count": {"name": "正在工作的端口数"},
+      "raw_telemetry": {"name": "原始设备数据"}
+    },
     "binary_sensor": {"connection": {"name": "蓝牙连接"}},
-    "button": {"connect": {"name": "连接"}, "disconnect": {"name": "断开连接"}}
+    "button": {"connect": {"name": "连接"}, "disconnect": {"name": "断开连接"}},
+    "switch": {"port_switch": {"name": "{port} 开关"}},
+    "select": {
+      "port_priority": {
+        "name": "端口优先级",
+        "state": {"0": "无", "1": "USB C1", "2": "USB C2", "4": "USB C3", "8": "USB C4", "3": "USB C1、USB C2", "5": "USB C1、USB C3", "9": "USB C1、USB C4", "6": "USB C2、USB C3", "10": "USB C2、USB C4", "12": "USB C3、USB C4", "7": "USB C1、USB C2、USB C3", "11": "USB C1、USB C2、USB C4", "13": "USB C1、USB C3、USB C4", "14": "USB C2、USB C3、USB C4", "15": "全部 USB-C 端口"}
+      },
+      "charging_mode": {
+        "name": "充电模式",
+        "state": {"ai_power": "AI 功率", "port_priority": "端口优先", "dual_laptop": "双笔记本", "low_power": "低功耗"}
+      }
+    }
   }
 }

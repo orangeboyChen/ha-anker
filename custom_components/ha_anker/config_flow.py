@@ -99,7 +99,9 @@ class AnkerConfigFlow(ConfigFlow, domain=DOMAIN):
         if not accounts:
             return await self.async_step_cloud_login()
         choices = {account.account_id: account.email for account in accounts}
-        choices["new"] = "Add another account"
+        choices["new"] = (
+            "添加其他账号" if self.hass.config.language.startswith("zh") else "Add another account"
+        )
         return self.async_show_form(
             step_id="cloud_account",
             data_schema=vol.Schema({vol.Required(CONF_ACCOUNT_ID): vol.In(choices)}),
@@ -229,8 +231,7 @@ class AnkerConfigFlow(ConfigFlow, domain=DOMAIN):
             {
                 "value": device.device_id,
                 "label": (
-                    f"{device.name} ({device.device_pn}, "
-                    f"{'Bluetooth' if device.transport == TRANSPORT_BLE else 'Wi-Fi'})"
+                    f"{device.name} ({device.device_pn}, {self._transport_label(device.transport)})"
                 ),
             }
             for device in available
@@ -246,3 +247,9 @@ class AnkerConfigFlow(ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
         )
+
+    def _transport_label(self, transport: str) -> str:
+        """Return a localized transport label for selector options."""
+        if self.hass.config.language.startswith("zh"):
+            return "蓝牙" if transport == TRANSPORT_BLE else "Wi-Fi"
+        return "Bluetooth" if transport == TRANSPORT_BLE else "Wi-Fi"

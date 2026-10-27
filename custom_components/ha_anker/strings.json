@@ -4,7 +4,7 @@
       "confirm": {"title": "Anker Power Bank", "description": "Add this nearby Anker BLE device?"},
       "cloud_account": {
         "title": "Anker account",
-        "description": "Choose a cached account or add another one.",
+        "description": "Choose a saved account or sign in with another phone number.",
         "data": {"account_id": "Account"}
       },
       "cloud_login": {
@@ -13,7 +13,7 @@
       },
       "cloud_device": {
         "title": "Choose an Anker device",
-        "description": "The account can have multiple devices.",
+        "description": "Select one Bluetooth power bank or one or more Wi-Fi chargers.",
         "data": {"selected_devices": "Devices"}
       }
     },
@@ -35,8 +35,47 @@
     }
   },
   "entity": {
-    "sensor": {"battery": {"name": "Battery"}},
+    "sensor": {
+        "battery": {"name": "Battery"},
+        "total_charging_power": {"name": "Total charging power"},
+        "total_discharging_power": {"name": "Total discharging power"},
+        "c1_power": {"name": "USB C1 power"},
+        "c1_voltage": {"name": "USB C1 voltage"},
+        "c1_current": {"name": "USB C1 current"},
+        "c2_power": {"name": "USB C2 power"},
+        "c2_voltage": {"name": "USB C2 voltage"},
+        "c2_current": {"name": "USB C2 current"},
+        "a_power": {"name": "USB-A power"},
+        "a_voltage": {"name": "USB-A voltage"},
+        "a_current": {"name": "USB-A current"},
+        "c1_power_status": {"name": "USB C1 output status", "state": {"idle": "Idle", "output": "Output", "input": "Input"}},
+        "c2_power_status": {"name": "USB C2 output status", "state": {"idle": "Idle", "output": "Output", "input": "Input"}},
+        "a_power_status": {"name": "USB-A output status", "state": {"idle": "Idle", "output": "Output", "input": "Input"}},
+        "health": {"name": "Battery health"},
+        "battery_cycles": {"name": "Battery cycle count"},
+        "battery_temperature": {"name": "Battery temperature"},
+        "shell_temperature": {"name": "Case temperature"},
+        "port_status": {"name": "{port} status", "state": {"idle": "Idle", "output": "Output", "input": "Input"}},
+        "port_voltage": {"name": "{port} voltage"},
+        "port_current": {"name": "{port} current"},
+        "port_power": {"name": "{port} power"},
+        "total_current": {"name": "Total current"},
+        "total_power": {"name": "Total power"},
+        "nonzero_status_count": {"name": "Active port count"},
+        "raw_telemetry": {"name": "Raw device data"}
+      },
     "binary_sensor": {"connection": {"name": "Bluetooth connection"}},
-    "button": {"connect": {"name": "Connect"}, "disconnect": {"name": "Disconnect"}}
+    "button": {"connect": {"name": "Connect"}, "disconnect": {"name": "Disconnect"}},
+    "switch": {"port_switch": {"name": "{port} Switch"}},
+    "select": {
+        "port_priority": {
+          "name": "Port priority",
+          "state": {"0": "None", "1": "USB C1", "2": "USB C2", "4": "USB C3", "8": "USB C4", "3": "USB C1, USB C2", "5": "USB C1, USB C3", "9": "USB C1, USB C4", "6": "USB C2, USB C3", "10": "USB C2, USB C4", "12": "USB C3, USB C4", "7": "USB C1, USB C2, USB C3", "11": "USB C1, USB C2, USB C4", "13": "USB C1, USB C3, USB C4", "14": "USB C2, USB C3, USB C4", "15": "All USB-C ports"}
+        },
+        "charging_mode": {
+          "name": "Charging mode",
+          "state": {"ai_power": "AI Power", "port_priority": "Port Priority", "dual_laptop": "Dual Laptop", "low_power": "Low Power"}
+        }
+      }
   }
 }

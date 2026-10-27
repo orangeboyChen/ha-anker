@@ -18,7 +18,7 @@ _PORT_NAMES = {
     "usbc_2": "USB C2",
     "usbc_3": "USB C3",
     "usbc_4": "USB C4",
-    "usba": "USB A",
+    "usba": "USB-A",
 }
 
 
@@ -49,7 +49,8 @@ class CloudPortSwitch(CoordinatorEntity[AnkerCloudCoordinator], SwitchEntity):
         self.port = port
         self.port_name = port_name
         self._attr_unique_id = f"{self.device_id}_{port_name}_switch"
-        self._attr_name = f"{_PORT_NAMES[port_name]} Switch"
+        self._attr_translation_key = "port_switch"
+        self._attr_translation_placeholders = {"port": _PORT_NAMES[port_name]}
         self._attr_device_info = {
             "identifiers": {(DOMAIN, self.device_id)},
             "name": device.get("name") or device.get("device_sn") or "Anker Charger",
